@@ -19,10 +19,12 @@ const fillLabel = async (label, v) => { const el = page.locator(`label:has-text(
 const selectLabel = async (label, v) => { const el = page.locator(`label:has-text("${label}")`).first().locator('xpath=following-sibling::select'); await el.selectOption({ label: v }) }
 
 await page.goto('http://localhost:4177/'); await page.waitForTimeout(400)
-ok('Pantalla de login', /Entrar con enlace por correo/.test(await T()))
-await page.fill('input[type=email]', 'andres@test.co'); await click('button', { hasText: 'Entrar con enlace' })
-ok('Confirmación de enlace enviado', /Te enviamos un enlace/.test(await T()))
-await page.evaluate(() => window.__sb._login('u-andres', 'andres@test.co')); await page.waitForTimeout(300)
+ok('Pantalla de login', /Enviarme el código por correo/.test(await T()))
+await page.fill('input[type=email]', 'andres@test.co'); await click('button', { hasText: 'Enviarme el código' })
+ok('Pide el código de 6 dígitos', /código de 6 dígitos/.test(await T()))
+await page.fill('input[inputmode=numeric]', '999999'); await click('button', { hasText: 'Entrar con el código' }); await page.waitForTimeout(200)
+ok('Código inválido rechazado', /Código inválido o vencido/.test(await T()))
+await page.fill('input[inputmode=numeric]', '123456'); await click('button', { hasText: 'Entrar con el código' }); await page.waitForTimeout(300)
 ok('Onboarding tras login', /Crear un hogar/.test(await T()))
 await fillLabel('Tu nombre', 'Andrés'); await fillLabel('Nombre del hogar', 'Casa Quijano'); await click('button', { hasText: 'Crear mi hogar' }); await page.waitForTimeout(400)
 ok('Dashboard del hogar', /Casa Quijano/.test(await T()) && /Presupuestado/.test(await T()))

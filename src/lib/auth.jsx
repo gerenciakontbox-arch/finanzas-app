@@ -36,6 +36,7 @@ export function AuthProvider({ children }) {
     esDueño: miembros.some(m => m.user_id === session?.user?.id && m.rol === 'dueño'),
     recargar: () => cargarContexto(session),
     enviarEnlace: async (email) => supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } }),
+    verificarCodigo: async (email, token) => supabase.auth.verifyOtp({ email, token: String(token).replace(/\D/g, ''), type: 'email' }),
     salir: () => supabase.auth.signOut(),
     crearHogar: async (nombreHogar, nombreMiembro) => { const { data, error } = await supabase.rpc('crear_hogar', { p_nombre: nombreHogar, p_nombre_miembro: nombreMiembro }); if (error) throw error; await cargarContexto(session); return data },
     unirseHogar: async (codigo, nombreMiembro) => { const { data, error } = await supabase.rpc('unirse_hogar', { p_codigo: codigo, p_nombre_miembro: nombreMiembro }); if (error) throw error; await cargarContexto(session); return data },

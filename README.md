@@ -11,6 +11,8 @@ App de finanzas del hogar, multi-hogar y multi-miembro. React + Vite en el front
    - *Site URL*: la URL de tu sitio en Netlify (por ejemplo `https://finanzas-quijano.netlify.app`).
    - *Redirect URLs*: agrega esa misma URL y `http://localhost:5173` (para desarrollo).
 4. En **Authentication → Providers → Email**: deja activado *Enable email provider*. Puedes desactivar *Confirm email* para que el enlace mágico entre directo.
+4b. En **Authentication → Emails → Magic Link** reemplaza el cuerpo por una plantilla que incluya el **código** `{{ .Token }}` además del enlace (ver `supabase/email-magic-link.html`). Sin esto, el correo solo trae el enlace y la app instalada en iPhone (pantalla de inicio) no puede iniciar sesión, porque el enlace abre en Safari y no dentro de la app.
+4c. El remitente por defecto de Supabase solo entrega a miembros de tu organización y limita a 2 correos/hora. Antes de invitar a otras personas configura un SMTP propio en **Authentication → Emails → SMTP Settings** (Brevo, Resend, etc.) y sube el límite en **Authentication → Rate Limits**.
 5. En **Settings → API** copia:
    - *Project URL* → `VITE_SUPABASE_URL`
    - *anon public* key → `VITE_SUPABASE_ANON_KEY`
@@ -27,7 +29,7 @@ App de finanzas del hogar, multi-hogar y multi-miembro. React + Vite en el front
 4. Vuelve a Supabase y pon la URL definitiva de Netlify en *Site URL* (paso 1.3) si no la tenías.
 
 ### 4. Primer uso
-1. Abre la URL en el celular, escribe tu correo, abre el enlace que llega (desde el mismo dispositivo).
+1. Abre la URL en el celular, escribe tu correo y escribe el **código de 6 dígitos** que llega. (El correo también trae un enlace; sirve si lo abres en el mismo navegador, pero en la app instalada usa siempre el código.)
 2. Crea tu hogar. Para invitar a tu familia: **Config → Hogar → Compartir**.
 3. Carga masiva: en **Presupuesto** y en **Programado** (Obligaciones e Ingresos) el botón de subir (↑) importa un CSV; cada uno ofrece su plantilla descargable. Acepta `;` o `,`, montos `1.200.000` / `$ 78.500` y fechas `DD/MM/AAAA`. Maestros faltantes (entidad, categoría, cuenta) se crean al importar si lo autorizas.
 4. En iPhone: Safari → Compartir → **Agregar a pantalla de inicio**.

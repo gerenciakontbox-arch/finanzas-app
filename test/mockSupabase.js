@@ -74,7 +74,7 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
     _T: T, _login: (id = userId, mail = email) => { session = { user: { id, email: mail } }; listeners.forEach(f => f('SIGNED_IN', session)) }, _logout: () => { session = null; listeners.forEach(f => f('SIGNED_OUT', null)) },
     from: q,
     rpc: async (fn, args) => { try { return { data: rpcs[fn](args), error: null } } catch (e) { return { data: null, error: { message: e.message } } } },
-    auth: { getSession: async () => ({ data: { session } }), onAuthStateChange: f => { listeners.push(f); return { data: { subscription: { unsubscribe() { } } } } }, signInWithOtp: async ({ email }) => { client._otp = email; return { error: null } }, signOut: async () => { client._logout(); return { error: null } } },
+    auth: { getSession: async () => ({ data: { session } }), onAuthStateChange: f => { listeners.push(f); return { data: { subscription: { unsubscribe() { } } } } }, signInWithOtp: async ({ email }) => { client._otp = email; return { error: null } }, verifyOtp: async ({ email, token }) => { if (email !== client._otp || token !== '123456') return { data: null, error: { message: 'Token has expired or is invalid' } }; client._login(client._uidFor?.(email) || 'u-' + email.split('@')[0], email); return { data: { session }, error: null } }, signOut: async () => { client._logout(); return { error: null } } },
     storage: { from: () => ({ upload: async () => ({ error: null }), createSignedUrl: async ruta => ({ data: { signedUrl: 'blob:' + ruta } }), remove: async () => ({ error: null }) }) },
     channel: () => ({ on() { return this }, subscribe() { return this } }), removeChannel() { },
   }
