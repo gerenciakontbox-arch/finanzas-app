@@ -18,7 +18,7 @@ export function Login() {
     if (error) { setErr(error.message === 'email rate limit exceeded' ? 'Se alcanzó el límite de correos por hora. Espera unos minutos e intenta de nuevo.' : error.message); setEstado('idle') } else setEstado('enviado')
   }
   const verificar = async () => {
-    const t = codigo.replace(/\D/g, ''); if (t.length < 6) { setErr('El código tiene 6 dígitos.'); return }
+    const t = codigo.replace(/\D/g, ''); if (t.length < 6) { setErr('El código tiene entre 6 y 10 dígitos.'); return }
     setEstado('verificando'); setErr('')
     const { error } = await verificarCodigo(email.trim().toLowerCase(), t)
     if (error) { setErr(/expired|invalid/i.test(error.message) ? 'Código inválido o vencido. Pide uno nuevo.' : error.message); setEstado('enviado') }
@@ -28,9 +28,9 @@ export function Login() {
       <div style={title}><Icon name="wallet" size={26} style={{ color: '#7c3aed' }} />Finanzas Integradas</div>
       <div style={{ fontSize: 13, color: '#6b7280', marginTop: 6, marginBottom: 22 }}>Presupuesto, deudas y patrimonio del hogar, en un solo lugar.</div>
       {estado === 'enviado' || estado === 'verificando' ? (<>
-        <Aviso tipo="ok">Te enviamos un correo a <b>{email}</b> con un <b>código de 6 dígitos</b>. Escríbelo aquí para entrar. Revisa spam si no llega en un minuto.</Aviso>
+        <Aviso tipo="ok">Te enviamos un correo a <b>{email}</b> con un <b>código numérico</b>. Escríbelo aquí para entrar (solo el del correo más reciente; no abras el enlace). Revisa spam si no llega en un minuto.</Aviso>
         <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginTop: 16 }}>Código</label>
-        <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={6} value={codigo} onChange={e => setCodigo(e.target.value.replace(/\D/g, ''))} onKeyDown={e => e.key === 'Enter' && verificar()} placeholder="000000" autoFocus style={{ ...inp, marginTop: 6, marginBottom: 12, fontSize: 26, letterSpacing: '0.4em', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700 }} />
+        <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={10} value={codigo} onChange={e => setCodigo(e.target.value.replace(/\D/g, ''))} onKeyDown={e => e.key === 'Enter' && verificar()} placeholder="código" autoFocus style={{ ...inp, marginTop: 6, marginBottom: 12, fontSize: 26, letterSpacing: '0.4em', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700 }} />
         {err && <div style={{ marginBottom: 10 }}><Aviso tipo="err">{err}</Aviso></div>}
         <div style={{ display: 'flex' }}><SaveBtn onClick={verificar} disabled={estado === 'verificando' || codigo.length < 6}>{estado === 'verificando' ? 'Verificando…' : 'Entrar con el código'}</SaveBtn></div>
         <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 14, lineHeight: 1.5 }}>

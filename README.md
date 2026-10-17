@@ -29,7 +29,7 @@ App de finanzas del hogar, multi-hogar y multi-miembro. React + Vite en el front
 4. Vuelve a Supabase y pon la URL definitiva de Netlify en *Site URL* (paso 1.3) si no la tenías.
 
 ### 4. Primer uso
-1. Abre la URL en el celular, escribe tu correo y escribe el **código de 6 dígitos** que llega. (El correo también trae un enlace; sirve si lo abres en el mismo navegador, pero en la app instalada usa siempre el código.)
+1. Abre la URL en el celular, escribe tu correo y escribe el **código numérico** que llega. (El correo también trae un enlace; sirve si lo abres en el mismo navegador, pero en la app instalada usa siempre el código.)
 2. Crea tu hogar. Para invitar a tu familia: **Config → Hogar → Compartir**.
 3. Carga masiva: en **Presupuesto** y en **Programado** (Obligaciones e Ingresos) el botón de subir (↑) importa un CSV; cada uno ofrece su plantilla descargable. Acepta `;` o `,`, montos `1.200.000` / `$ 78.500` y fechas `DD/MM/AAAA`. Maestros faltantes (entidad, categoría, cuenta) se crean al importar si lo autorizas.
 4. En iPhone: Safari → Compartir → **Agregar a pantalla de inicio**.

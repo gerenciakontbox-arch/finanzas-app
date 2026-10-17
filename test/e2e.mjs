@@ -21,7 +21,7 @@ const selectLabel = async (label, v) => { const el = page.locator(`label:has-tex
 await page.goto('http://localhost:4177/'); await page.waitForTimeout(400)
 ok('Pantalla de login', /Enviarme el código por correo/.test(await T()))
 await page.fill('input[type=email]', 'andres@test.co'); await click('button', { hasText: 'Enviarme el código' })
-ok('Pide el código de 6 dígitos', /código de 6 dígitos/.test(await T()))
+ok('Pide el código del correo', /código numérico/.test(await T()))
 await page.fill('input[inputmode=numeric]', '999999'); await click('button', { hasText: 'Entrar con el código' }); await page.waitForTimeout(200)
 ok('Código inválido rechazado', /Código inválido o vencido/.test(await T()))
 await page.fill('input[inputmode=numeric]', '123456'); await click('button', { hasText: 'Entrar con el código' }); await page.waitForTimeout(300)
