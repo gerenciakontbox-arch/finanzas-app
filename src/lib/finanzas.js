@@ -49,11 +49,39 @@ export function presupuestoConEjecucion(db, periodo) {
   return db.presupuesto.filter(p => !periodo || p.periodo === periodo).map(p => { const e = exec[p.id] || 0; return { ...p, monto: +p.monto, ejecutado: e, diferencia: +p.monto - e, pct: +p.monto > 0 ? Math.round(e / +p.monto * 100) : 0 } })
 }
 
-// Cruce hogar/empresa: entidad beneficiaria ≠ entidad dueña de la cuenta (cuando ambas son conocidas)
-export function esCruce(m, ix) {
-  const cta = ix.cta[m.cuenta_id]; if (!cta || !cta.entidad_id || !m.entidad_id) return false
-  const eCta = ix.ent[cta.entidad_id], eMov = ix.ent[m.entidad_id]
-  if (!eCta || !eMov) return false
-  if (eCta.tipo === 'grupo' || eMov.tipo === 'grupo') return false // "Familia" no cuenta como cruce
-  return (eCta.tipo === 'empresa') !== (eMov.tipo === 'empresa')
+// ── Aportes entre espacios ───────────────────────────────────────────────────
+// En el espacio personal: aportes hechos y dinero recibido, por espacio compartido (espejos).
+export function aportesPorEspacio(all, personalId, mes) {
+  const out = {}
+  for (const m of all.movimientos) {
+    if (m.espacio_id !== personalId || !m.espejo_de || !m.espacio_contraparte) continue
+    if (mes && !m.fecha.startsWith(mes)) continue
+    const o = (out[m.espacio_contraparte] ||= { aportes: 0, recibidos: 0, ingresos: 0 })
+    if (m.subtipo === 'aporte') o.aportes += +m.monto
+    else if (m.tipo === 'Ingreso') o.ingresos += +m.monto // honorarios/salario desde una empresa: ya cuenta como ingreso normal
+    else o.recibidos += +m.monto // recibido, devolución (transferencias)
+  }
+  return out
+}
+// En un espacio compartido: qué puso cada miembro (pagador) y qué recibió, en el mes o acumulado.
+export function aportesPorMiembro(all, espacioId, mes, duenoCuenta) {
+  const out = {}
+  for (const m of all.movimientos) {
+    if (m.espacio_id !== espacioId || m.espejo_de) continue
+    if (mes && !m.fecha.startsWith(mes)) continue
+    const cta = all.cuentas.find(c => c.id === m.cuenta_id); const d = cta ? duenoCuenta(cta) : null
+    if (d) { const o = (out[d] ||= { aportes: 0, recibidos: 0 }); if (m.tipo === 'Salida' || (m.tipo === 'Transferencia' && m.subtipo === 'traslado')) o.aportes += +m.monto; else if (m.tipo === 'Ingreso') o.recibidos += +m.monto }
+    const cd = all.cuentas.find(c => c.id === m.cuenta_destino_id); const d2 = cd ? duenoCuenta(cd) : null
+    if (d2 && m.tipo === 'Salida') { const o = (out[d2] ||= { aportes: 0, recibidos: 0 }); o.recibidos += +m.monto }
+  }
+  return out
+}
+// Rubros de presupuestos compartidos asignados a mí → aporte planificado por espacio
+export function aportesPlanificados(all, periodo, userId, personalId) {
+  const out = {}
+  for (const p of all.presupuesto) {
+    if (p.espacio_id === personalId || p.periodo !== periodo || p.pagador_id !== userId || p.estado === 'Cancelado') continue
+    out[p.espacio_id] = (out[p.espacio_id] || 0) + +p.monto
+  }
+  return out
 }

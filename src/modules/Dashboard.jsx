@@ -1,13 +1,14 @@
 import { useData, useIndices } from '../lib/data'
 import { Kpi, Card, Badge, IcoText, Icon, BarChartCJ, PieChartCJ } from '../lib/ui'
 import { fmtCOP, fmtDate, today, addDays, daysLeft, GRUPOS, TC, primeroDelMes } from '../lib/util'
-import { deudaTotal, presupuestoConEjecucion, resumenTarjeta, indicePagadas } from '../lib/finanzas'
+import { deudaTotal, presupuestoConEjecucion, resumenTarjeta, indicePagadas, aportesPorEspacio, aportesPorMiembro, aportesPlanificados } from '../lib/finanzas'
+import { useAuth } from '../lib/auth'
 
 const ECLS = { Planificado: '#f1f5f9|#64748b', Programado: '#dbeafe|#1e40af', Pagado: '#d1fae5|#065f46', Cancelado: '#fee2e2|#991b1b' }
 const PICO = { Impuesto: 'receipt', Seguro: 'shield', Mantenimiento: 'wrench', 'Cuota crédito': 'card', Servicio: 'wifi', Suscripción: 'refresh', Nómina: 'user', Honorarios: 'dollar', Arriendo: 'home', Otro: 'pin' }
 
 export default function Dashboard({ goTo }) {
-  const { db } = useData(); const ix = useIndices()
+  const { db, all, espacioDe, duenoCuenta, nombreMiembro, saldoCuenta } = useData(); const ix = useIndices(); const { espacio, esPersonal, personal, userId, compartidos, miembros } = useAuth()
   const periodo = primeroDelMes()
   const pce = presupuestoConEjecucion(db, periodo)
   const totalP = pce.reduce((a, p) => a + p.monto, 0), totalE = pce.reduce((a, p) => a + p.ejecutado, 0)
@@ -15,6 +16,12 @@ export default function Dashboard({ goTo }) {
   const movMes = db.movimientos.filter(m => m.fecha.startsWith(mes))
   const ing = movMes.filter(m => m.tipo === 'Ingreso').reduce((a, m) => a + +m.monto, 0)
   const sal = movMes.filter(m => m.tipo === 'Salida').reduce((a, m) => a + +m.monto, 0)
+  const aportesMes = esPersonal ? aportesPorEspacio(all, personal?.id, mes) : {}
+  const totAportes = Object.values(aportesMes).reduce((a, x) => a + x.aportes, 0), totRecibidos = Object.values(aportesMes).reduce((a, x) => a + x.recibidos, 0)
+  const planAportes = esPersonal ? aportesPlanificados(all, periodo, userId, personal?.id) : {}
+  const porMiembro = !esPersonal ? aportesPorMiembro(all, espacio.id, mes, duenoCuenta) : {}
+  const porMiembroTotal = !esPersonal ? aportesPorMiembro(all, espacio.id, null, duenoCuenta) : {}
+  const efectivoTotal = db.cuentasPropias.filter(c => c.tipo !== TC).reduce((a, c) => a + saldoCuenta(c), 0)
   const deuda = deudaTotal(db)
   const t = today(), t7 = addDays(t, 7)
   const proxP = pce.filter(p => !['Pagado', 'Cancelado'].includes(p.estado) && p.fecha_tentativa >= t && p.fecha_tentativa <= t7).sort((a, b) => a.fecha_tentativa.localeCompare(b.fecha_tentativa))
@@ -31,9 +38,29 @@ export default function Dashboard({ goTo }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <Kpi icon="list" value={fmtCOP(totalP)} sub="Este mes" label="Presupuestado" grad="linear-gradient(135deg,#7c3aed,#6d28d9)" />
         <Kpi icon="list-check" value={fmtCOP(totalE)} sub={`${totalP > 0 ? Math.round(totalE / totalP * 100) : 0}% del plan`} label="Ejecutado" grad="linear-gradient(135deg,#0891b2,#0e7490)" />
-        <Kpi icon="dollar" value={fmtCOP(ing - sal)} sub={`Ing ${fmtCOP(ing)}${ingresosPend ? ` · por cobrar ${fmtCOP(ingresosPend)}` : ''}`} label="Flujo neto del mes" grad="linear-gradient(135deg,#059669,#047857)" />
+        <Kpi icon="dollar" value={fmtCOP(ing + totRecibidos - sal - totAportes)} sub={esPersonal ? `Ing ${fmtCOP(ing + totRecibidos)} · aportes ${fmtCOP(totAportes)}` : `Ing ${fmtCOP(ing)}${ingresosPend ? ` · por cobrar ${fmtCOP(ingresosPend)}` : ''}`} label="Flujo neto del mes" grad="linear-gradient(135deg,#059669,#047857)" />
         <Kpi icon="card" value={fmtCOP(deuda.total)} sub={`Créditos ${fmtCOP(deuda.cred)} · TC ${fmtCOP(deuda.tcs)}`} label="Deuda pendiente" grad="linear-gradient(135deg,#dc2626,#b91c1c)" />
       </div>
+      {(esPersonal ? db.cuentasPropias.some(c => c.tipo !== TC) : db.cuentasPropias.some(c => c.tipo !== TC)) && <Card>
+        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}><IcoText name="landmark">{esPersonal ? 'Mis cuentas' : `Cuentas de ${espacio.nombre}`} · {fmtCOP(efectivoTotal)}</IcoText></div>
+        {db.cuentasPropias.filter(c => c.tipo !== TC).map(c => <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '5px 0', borderBottom: '1px solid #f9fafb' }}><span>{c.nombre} <span style={{ color: '#9ca3af', fontSize: 10 }}>{c.tipo}</span></span><b style={{ color: saldoCuenta(c) < 0 ? '#dc2626' : '#111' }}>{fmtCOP(saldoCuenta(c))}</b></div>)}
+        <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 6 }}>Saldo calculado con los movimientos registrados en la app.</div>
+      </Card>}
+      {esPersonal && compartidos.length > 0 && <Card>
+        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}><IcoText name="arrow-right">Mis espacios compartidos · este mes</IcoText></div>
+        {compartidos.map(e => { const a = aportesMes[e.id] || { aportes: 0, recibidos: 0 }; const plan = planAportes[e.id] || 0; return <div key={e.id} style={{ padding: '8px 0', borderBottom: '1px solid #f9fafb' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}><b>{e.nombre}</b><span style={{ color: '#7c3aed', fontWeight: 700 }}>aporté {fmtCOP(a.aportes)}</span></div>
+          <div style={{ fontSize: 10, color: '#6b7280' }}>{plan ? `planificado ${fmtCOP(plan)} · ` : ''}{a.recibidos ? `recibí ${fmtCOP(a.recibidos)} · ` : ''}{a.ingresos ? `me pagó ${fmtCOP(a.ingresos)} · ` : ''}neto {fmtCOP(a.aportes - a.recibidos - (a.ingresos || 0))}</div>
+        </div> })}
+      </Card>}
+      {!esPersonal && Object.keys(porMiembroTotal).length > 0 && <Card>
+        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}><IcoText name="user">Aportes por miembro</IcoText></div>
+        {miembros.map(m => { const a = porMiembro[m.user_id] || { aportes: 0, recibidos: 0 }; const t = porMiembroTotal[m.user_id] || { aportes: 0, recibidos: 0 }; return <div key={m.user_id} style={{ padding: '8px 0', borderBottom: '1px solid #f9fafb' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}><b>{m.nombre}</b><span style={{ color: '#7c3aed', fontWeight: 700 }}>este mes {fmtCOP(a.aportes - a.recibidos)}</span></div>
+          <div style={{ fontSize: 10, color: '#6b7280' }}>puso {fmtCOP(a.aportes)}{a.recibidos ? ` · recibió ${fmtCOP(a.recibidos)}` : ''} · acumulado neto {fmtCOP(t.aportes - t.recibidos)}</div>
+        </div> })}
+        <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 6 }}>Pagos hechos con cuentas personales de cada miembro. Lo pagado con cuentas propias del espacio no cuenta como aporte.</div>
+      </Card>}
       {tcs.length > 0 && <Card>
         <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 10 }}><IcoText name="card">Próximas facturas de tarjeta</IcoText></div>
         {tcs.map(r => (<div key={r.cuenta.id} onClick={() => goTo('deudas')} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #f9fafb', cursor: 'pointer' }}>
@@ -53,7 +80,7 @@ export default function Dashboard({ goTo }) {
           </div>) })}
         {proxP.map(p => (
           <div key={p.id} onClick={() => goTo('presupuesto')} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #f9fafb', cursor: 'pointer' }}>
-            <div><div style={{ fontWeight: 600, fontSize: 12, color: '#111' }}><IcoText name="list" size={12} gap={5}>{p.concepto}</IcoText></div><div style={{ fontSize: 10, color: '#6b7280' }}>{ix.ent[p.entidad_id]?.nombre || '—'} · {fmtDate(p.fecha_tentativa)}</div></div>
+            <div><div style={{ fontWeight: 600, fontSize: 12, color: '#111' }}><IcoText name="list" size={12} gap={5}>{p.concepto}</IcoText></div><div style={{ fontSize: 10, color: '#6b7280' }}>{p.pagador_id && !esPersonal ? nombreMiembro(p.pagador_id) + ' · ' : ''}{fmtDate(p.fecha_tentativa)}</div></div>
             <div style={{ textAlign: 'right' }}><div style={{ fontWeight: 700, fontSize: 12 }}>{fmtCOP(p.monto)}</div><Badge val={p.estado} map={ECLS} /></div>
           </div>))}
       </Card>

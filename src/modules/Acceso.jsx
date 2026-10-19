@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../lib/auth'
-import { Icon, inp, SaveBtn, Aviso, PBtn } from '../lib/ui'
+import { Icon, inp, SaveBtn, Aviso } from '../lib/ui'
 
 const wrap = { minHeight: '100vh', background: 'linear-gradient(160deg,#7c3aed,#4338ca)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }
 const card = { background: '#fff', borderRadius: 24, padding: '28px 24px', width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }
@@ -48,35 +48,32 @@ export function Login() {
   )
 }
 
-export function Onboarding() {
-  const { crearHogar, unirseHogar, user, salir } = useAuth()
-  const [modo, setModo] = useState('crear'); const [nombre, setNombre] = useState(''); const [hogar, setHogar] = useState(''); const [codigo, setCodigo] = useState('')
-  const [err, setErr] = useState(''); const [busy, setBusy] = useState(false)
-  const go = async () => {
-    setErr('')
-    if (!nombre.trim()) { setErr('Escribe tu nombre: así aparecerás en lo que registres.'); return }
-    setBusy(true)
-    try { modo === 'crear' ? await crearHogar(hogar.trim() || `Hogar de ${nombre.trim()}`, nombre.trim()) : await unirseHogar(codigo, nombre.trim()) }
-    catch (e) { setErr(e.message || String(e)) } finally { setBusy(false) }
-  }
+// Primer ingreso: el nombre se tomó del correo; se pide uno real una sola vez.
+export function PrimerNombre() {
+  const { cambiarMiNombre } = useAuth()
+  const [nombre, setNombre] = useState(''); const [busy, setBusy] = useState(false); const [oculto, setOculto] = useState(false)
+  if (oculto) return null
+  const go = async () => { if (!nombre.trim()) return; setBusy(true); try { await cambiarMiNombre(nombre.trim()) } finally { setBusy(false) } }
+  return (
+    <div style={{ margin: '14px 14px 0', background: '#fff', borderRadius: 16, padding: '14px 16px', border: '1px solid #e9d5ff', boxShadow: '0 6px 20px rgba(124,58,237,0.08)' }}>
+      <div style={{ fontWeight: 800, fontSize: 14, color: '#111' }}>¿Cómo te llamas?</div>
+      <div style={{ fontSize: 11, color: '#6b7280', margin: '4px 0 10px' }}>Así aparecerás en lo que registres y en los espacios que compartas.</div>
+      <div style={{ display: 'flex', gap: 8 }}><input value={nombre} onChange={e => setNombre(e.target.value)} onKeyDown={e => e.key === 'Enter' && go()} placeholder="Ej. Andrés" style={{ ...inp, flex: 1 }} /><SaveBtn onClick={go} disabled={busy || !nombre.trim()}>Guardar</SaveBtn></div>
+      <button onClick={() => setOculto(true)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 11, cursor: 'pointer', padding: 0, marginTop: 8 }}>Después</button>
+    </div>
+  )
+}
+
+export function FaltaMigracion({ version }) {
+  const { salir } = useAuth()
   return (
     <div style={wrap}><div style={card}>
-      <div style={title}><Icon name="home" size={26} style={{ color: '#7c3aed' }} />Tu hogar</div>
-      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 6, marginBottom: 16 }}>Sesión: {user?.email} · <button onClick={salir} style={{ background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', fontSize: 12, padding: 0 }}>salir</button></div>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}><PBtn active={modo === 'crear'} onClick={() => setModo('crear')}>Crear un hogar</PBtn><PBtn active={modo === 'unir'} onClick={() => setModo('unir')}>Tengo un código</PBtn></div>
-      <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' }}>Tu nombre</label>
-      <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej. Andrés" style={{ ...inp, marginTop: 6, marginBottom: 12 }} />
-      {modo === 'crear' ? (<>
-        <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' }}>Nombre del hogar</label>
-        <input value={hogar} onChange={e => setHogar(e.target.value)} placeholder="Ej. Casa Quijano" style={{ ...inp, marginTop: 6, marginBottom: 12 }} />
-        <Aviso tipo="info">Serás el dueño. Luego podrás invitar a tu familia con un código desde Config.</Aviso>
-      </>) : (<>
-        <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' }}>Código de invitación</label>
-        <input value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} placeholder="8 caracteres" maxLength={8} style={{ ...inp, marginTop: 6, marginBottom: 12, letterSpacing: '0.2em', fontFamily: 'monospace', fontSize: 18, textAlign: 'center' }} />
-        <Aviso tipo="info">Pídele el código al dueño del hogar (está en Config → Hogar).</Aviso>
-      </>)}
-      {err && <div style={{ marginTop: 10 }}><Aviso tipo="err">{err}</Aviso></div>}
-      <div style={{ display: 'flex', marginTop: 16 }}><SaveBtn onClick={go} disabled={busy}>{busy ? 'Un momento…' : modo === 'crear' ? 'Crear mi hogar' : 'Unirme al hogar'}</SaveBtn></div>
+      <div style={title}><Icon name="alert" size={26} style={{ color: '#d97706' }} />Base de datos desactualizada</div>
+      <div style={{ fontSize: 13, color: '#374151', marginTop: 10, lineHeight: 1.6 }}>
+        Esta versión de la app necesita el esquema <b>v{version}</b>. En Supabase → <b>SQL Editor</b> ejecuta el archivo <code>supabase/migrations/0002_espacios.sql</code> del repositorio y vuelve a abrir la app. No se pierde ningún dato.
+      </div>
+      <div style={{ marginTop: 14 }}><button onClick={() => window.location.reload()} style={{ width: '100%', padding: 12, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, cursor: 'pointer' }}>Ya la ejecuté, reintentar</button></div>
+      <button onClick={salir} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 11, cursor: 'pointer', padding: 0, marginTop: 10 }}>Cerrar sesión</button>
     </div></div>
   )
 }
@@ -86,7 +83,7 @@ export function SinConfigurar() {
     <div style={wrap}><div style={card}>
       <div style={title}><Icon name="alert" size={26} style={{ color: '#d97706' }} />Falta configuración</div>
       <div style={{ fontSize: 13, color: '#374151', marginTop: 10, lineHeight: 1.6 }}>
-        La app no tiene las credenciales de Supabase. En Netlify: <b>Site configuration → Environment variables</b> y agrega <code>VITE_SUPABASE_URL</code> y <code>VITE_SUPABASE_ANON_KEY</code>. Luego vuelve a desplegar.
+        La app no tiene las credenciales de Supabase. En Netlify: <b>Project configuration → Environment variables</b> y agrega <code>VITE_SUPABASE_URL</code> y <code>VITE_SUPABASE_ANON_KEY</code>. Luego vuelve a desplegar.
       </div>
     </div></div>
   )

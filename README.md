@@ -1,12 +1,12 @@
 # Akontapp
 
-App de finanzas del hogar, multi-hogar y multi-miembro. React + Vite en el frontend, Supabase (Postgres + Auth + Storage) como backend, desplegada en Netlify.
+App de finanzas personales con **espacios** compartidos (hogar, empresa). React + Vite en el frontend, Supabase (Postgres + Auth + Storage) como backend, desplegada en Netlify.
 
 ## Puesta en marcha (una sola vez)
 
 ### 1. Supabase
 1. Crea una cuenta en https://supabase.com y un proyecto nuevo (región **East US (N. Virginia)**, la más cercana a Colombia). Guarda la contraseña de la base de datos aunque la app no la usa.
-2. En el panel: **SQL Editor → New query**. Pega el contenido completo de `supabase/migrations/0001_schema.sql` y ejecuta (**Run**). Debe terminar sin errores. Es idempotente: puedes volver a ejecutarlo.
+2. En el panel: **SQL Editor → New query**. Pega el contenido completo de `supabase/migrations/0001_schema.sql` y ejecuta (**Run**); luego haz lo mismo con `supabase/migrations/0002_espacios.sql`. Ambos son idempotentes: puedes volver a ejecutarlos.
 3. En **Authentication → URL Configuration**:
    - *Site URL*: la URL de tu sitio en Netlify (por ejemplo `https://finanzas-quijano.netlify.app`).
    - *Redirect URLs*: agrega esa misma URL y `http://localhost:5173` (para desarrollo).
@@ -30,7 +30,7 @@ App de finanzas del hogar, multi-hogar y multi-miembro. React + Vite en el front
 
 ### 4. Primer uso
 1. Abre la URL en el celular, escribe tu correo y escribe el **código numérico** que llega. (El correo también trae un enlace; sirve si lo abres en el mismo navegador, pero en la app instalada usa siempre el código.)
-2. Crea tu hogar. Para invitar a tu familia: **Config → Hogar → Compartir**.
+2. Entras directo a tu espacio personal. Para compartir con tu familia o tu empresa: **Config → Espacios → Crear hogar o empresa**, y comparte el código. Tus cuentas se habilitan como medio de pago en cada espacio desde **Config → Cuentas** (espacio personal).
 3. Carga masiva: en **Presupuesto**, **Programado** (Obligaciones e Ingresos) y **Activos** el botón de subir (↑) importa un CSV; cada uno ofrece su plantilla descargable. Acepta `;` o `,`, montos `1.200.000` / `$ 78.500` y fechas `DD/MM/AAAA`. Maestros faltantes (entidad, categoría, cuenta) se crean al importar si lo autorizas.
 4. En iPhone: Safari → Compartir → **Agregar a pantalla de inicio**.
 
@@ -43,15 +43,32 @@ npm run build            # genera dist/
 ```
 
 ## Pruebas
-`test/e2e.mjs` recorre los flujos principales (43 verificaciones) contra un backend simulado en memoria (`test/mockSupabase.js`), incluyendo aislamiento entre hogares. Requiere Chromium de Playwright:
+`test/e2e.mjs` recorre los flujos principales (44 verificaciones) contra un backend simulado en memoria (`test/mockSupabase.js`): espacios, cuentas habilitadas, aportes espejo, factura partida, privacidad entre miembros y entre hogares. Requiere Chromium de Playwright:
 ```
 npx vite build -c test/vite.test.config.js && node test/e2e.mjs
 ```
-`supabase/migrations/0001_schema.sql` fue validado contra Postgres 16 con políticas RLS activas (ver `test/schema.test.sql`).
+Los esquemas fueron validados contra Postgres 16 con RLS activo y tres usuarios: `test/schema.test.sql` (0001) y `test/schema2.test.sql` (migración 0002 sobre datos heredados):
+```
+psql -h /tmp -p 5499 -U postgres -f test/schema2.test.sql
+```
+
+## Actualizar a la versión de espacios (migración 0002)
+Si ya usabas la app con el esquema inicial (hogar único):
+1. Sube esta versión a GitHub (Netlify despliega). La app mostrará "Base de datos desactualizada" hasta el paso 2; no se pierde nada.
+2. Supabase → **SQL Editor → New query** → pega `supabase/migrations/0002_espacios.sql` → **Run**. Si aparece el aviso de "destructive operations / RLS", elige **Run without RLS** (el script activa RLS por su cuenta).
+3. Vuelve a abrir la app. Qué hizo la migración con tus datos:
+   - El hogar existente se convirtió en un espacio tipo **hogar** (mismo id, mismo código de invitación).
+   - Cada miembro recibió su espacio **personal**.
+   - Los ítems se repartieron según su entidad: entidad tipo *empresa* → espacio **empresa** nuevo con ese nombre (tú como administrador); entidad *persona* cuyo nombre coincide con un miembro → su espacio personal; el resto (Familia, personas sin cuenta) → se quedó en el hogar.
+   - Las cuentas personales que ya se usaban en el hogar quedaron **habilitadas** allí como medio de pago.
+   - Los gastos del hogar pagados con cuentas personales generaron sus **aportes espejo** en el personal del pagador.
+   Después puedes mover cualquier activo, deuda, programación, compra o rubro entre espacios con el botón **Mover a…**.
 
 ## Modelo de datos (resumen)
-- `hogares` ← `miembros` (user, rol dueño/miembro) ← `perfiles` (hogar activo).
-- Maestros por hogar: `entidades`, `categorias`, `cuentas` (incluye tarjetas con cupo/tasa/corte), `activos`.
-- `presupuesto` por `periodo` (1° del mes); `movimientos` (lo único que mueve caja); `deudas` + `tc_cargos` + `cuotas_pagadas`; `programado` (obligaciones e ingresos, cada ocurrencia es una fila enlazada por `serie_id`, con ficha de pago) + `programado_adjuntos` en Storage.
-- Toda tabla de dominio lleva `creado_por/actualizado_por` y queda en `bitacora`. RLS: un usuario solo ve filas de los hogares a los que pertenece.
-- RPC: `crear_hogar`, `unirse_hogar`, `regenerar_codigo`, `completar_programado` (crea movimiento + siguiente ocurrencia, transaccional), `deshacer_programado`.
+- `espacios` (tipo personal / hogar / empresa) ← `espacio_miembros` (admin / miembro) ← `perfiles` (espacio activo, espacio personal). Cada usuario tiene un espacio personal creado automáticamente.
+- Todo ítem pertenece a exactamente un espacio (`espacio_id`): `categorias` (desactivables; usadas no se borran), `cuentas` (con `dueno_id` si son personales), `activos`, `presupuesto` (con `pagador_id`), `deudas` + `tc_cargos` + `cuotas_pagadas`, `programado` (cada ocurrencia una fila por `serie_id`, con ficha de pago y `pagador_id`) + `programado_adjuntos`, `movimientos`.
+- `cuentas_espacio`: cuentas personales habilitadas como medio de pago en espacios compartidos (los demás ven el nombre, nunca el saldo).
+- **Aportes espejo**: un movimiento de un espacio compartido pagado con la cuenta personal de un miembro genera por trigger, en el personal del dueño de la cuenta, una `Transferencia` subtipo `aporte` (`espejo_de` → original). Ingreso del espacio en cuenta personal → `recibido`. Salida del espacio hacia la cuenta de un miembro → `Ingreso` (honorarios) o `devolucion`. Los espejos no se editan ni borran directamente (RLS); siguen al original.
+- Saldo de una cuenta = solo movimientos cuyo `espacio_id` es el de la cuenta.
+- RLS: un usuario ve las filas de los espacios donde es miembro (`mis_espacios()`), más las cuentas habilitadas en ellos. Auditoría (`creado_por/actualizado_por`) y `bitacora` en todas las tablas de dominio.
+- RPC: `asegurar_personal`, `crear_espacio`, `unirse_espacio`, `regenerar_codigo`, `cambiar_mi_nombre`, `habilitar_cuenta`, `mover_item`, `completar_programado`, `deshacer_programado`, `pagar_factura_tc` (parte la factura por espacio), `pagar_cuota_credito`.
