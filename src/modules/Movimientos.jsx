@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useData, useIndices } from '../lib/data'
 import { useAuth } from '../lib/auth'
 import { Kpi, Card, Icon, IcoText, Modal, Field, inp, sel, PBtn, SaveBtn, CancelBtn, SmallBtn, PrimaryBtn, Aviso, useForm } from '../lib/ui'
@@ -6,15 +6,16 @@ import { fmtCOP, fmtDate, today, TC } from '../lib/util'
 import { indicePagadas, resumenDeuda } from '../lib/finanzas'
 import { parseMonto } from '../lib/csv'
 
-const SUB = { aporte: ['Aporte a', '#7c3aed', '#f5f3ff'], recibido: ['Recibido de', '#059669', '#ecfdf5'], devolucion: ['Devolución de', '#059669', '#ecfdf5'], traslado: ['Traslado', '#0891b2', '#ecfeff'] }
+const SUB = { aporte: ['Aporte a', '#4B1D9E', '#F3F1F8'], recibido: ['Recibido de', '#138A5B', '#E7F5EE'], devolucion: ['Devolución de', '#138A5B', '#E7F5EE'], traslado: ['Traslado', '#0F6E8C', '#E6F2F6'] }
 
-export default function Movimientos({ goTo }) {
+export default function Movimientos({ goTo, inicial }) {
   const { db, insertar, borrar, rpc, espacioDe, nombreCuenta, duenoCuenta, nombreMiembro, cuentasDe } = useData(); const ix = useIndices()
   const { espacio, esPersonal, userId, miembros, compartidos } = useAuth()
   const [modal, setModal] = useState(false); const [filtro, setFiltro] = useState('todos'); const [mes, setMes] = useState(today().slice(0, 7))
   const cuentasCaja = db.cuentas.filter(c => c.tipo !== TC)
   const empty = { fecha: today(), tipo: 'Salida', descripcion: '', categoria_id: db.categorias.find(c => c.activa !== false)?.id || null, cuenta_id: cuentasCaja[0]?.id || null, cuenta_destino_id: '', modo_destino: espacio.tipo === 'empresa' ? 'ingreso' : 'devolucion', activo_id: null, presupuesto_id: null, monto: '', deuda_id: '', cuotaN: '', manejo: '', mora: '', seguros: '', otros: '', aMiembro: false }
   const [form, sf, setForm] = useForm(empty)
+  useEffect(() => { if (!inicial) return; if (inicial.filtro) setFiltro(inicial.filtro); if (inicial.nuevo) { setForm(empty); setModal(true) } }, [inicial?._k]) // eslint-disable-line
   const catSel = ix.cat[form.categoria_id]
   const isCreditPay = form.tipo === 'Salida' && catSel?.nombre === 'Cuota crédito'
   const idx = indicePagadas(db.cuotas_pagadas)
@@ -57,37 +58,37 @@ export default function Movimientos({ goTo }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <select value={mes} onChange={e => setMes(e.target.value)} style={{ ...sel, fontWeight: 700, textTransform: 'capitalize' }}>{meses.map(m => <option key={m} value={m}>{new Date(m + '-01T12:00:00').toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })}</option>)}</select>
-      <div style={{ display: 'grid', gridTemplateColumns: esPersonal ? 'repeat(4,1fr)' : 'repeat(3,1fr)', gap: 6 }}>
-        <Kpi label="Ingresos" value={fmtCOP(ing + (esPersonal ? recibidos : 0))} color="#059669" /><Kpi label="Salidas" value={fmtCOP(sal)} color="#dc2626" />
-        {esPersonal && <Kpi label="Aportes" value={fmtCOP(aportes)} color="#7c3aed" />}
-        <Kpi label="Neto" value={fmtCOP(ing + recibidos - sal - aportes)} color={ing + recibidos - sal - aportes >= 0 ? '#7c3aed' : '#dc2626'} />
+      <select value={mes} onChange={e => setMes(e.target.value)} style={{ ...sel, fontWeight: 700 }}>{meses.map(m => { const l = new Date(m + '-01T12:00:00').toLocaleDateString('es-CO', { month: 'long', year: 'numeric' }); return <option key={m} value={m}>{l[0].toUpperCase() + l.slice(1)}</option> })}</select>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px' }}>
+        <Kpi label="Ingresos" value={fmtCOP(ing + (esPersonal ? recibidos : 0))} color="#138A5B" /><Kpi label="Salidas" value={fmtCOP(sal)} color="#B42318" />
+        {esPersonal && <Kpi label="Aportes" value={fmtCOP(aportes)} color="#4B1D9E" />}
+        <Kpi label="Neto" value={fmtCOP(ing + recibidos - sal - aportes)} color={ing + recibidos - sal - aportes >= 0 ? '#4B1D9E' : '#B42318'} />
       </div>
       {hayTC && <div onClick={() => goTo('deudas')} style={{ cursor: 'pointer' }}><Aviso tipo="info">Las compras con tarjeta se registran dentro de la tarjeta (Deudas). Aquí solo entra el pago de la factura.</Aviso></div>}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}><PBtn active={filtro === 'todos'} onClick={() => setFiltro('todos')}>Todos</PBtn><PBtn active={filtro === 'Ingreso'} onClick={() => setFiltro('Ingreso')}>Ingresos</PBtn><PBtn active={filtro === 'Salida'} onClick={() => setFiltro('Salida')}>Salidas</PBtn>{esPersonal && <PBtn active={filtro === 'Aportes'} onClick={() => setFiltro('Aportes')}>Aportes</PBtn>}</div>
         <PrimaryBtn onClick={() => { setForm(empty); setModal(true) }}><Icon name="plus" size={18} sw={2.2} /></PrimaryBtn>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {items.length === 0 && <Card style={{ textAlign: 'center', color: '#9ca3af', fontSize: 13, padding: 30 }}>Sin movimientos.</Card>}
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {items.length === 0 && <div style={{ color: '#6E6E73', fontSize: 13, padding: '20px 0' }}>Sin movimientos.</div>}
         {items.map(m => { const rubro = ix.pre[m.presupuesto_id]; const esp = m.espejo_de ? espacioDe(m.espacio_contraparte) : null; const sub = SUB[m.subtipo]; const d = m.desglose || {}; const extras = (d.cuota_manejo || 0) + (d.mora || 0) + (d.seguros || 0) + (d.otros || 0); const pag = m.pagador_id && !esPersonal ? nombreMiembro(m.pagador_id) : null; const cta = ix.cta[m.cuenta_id]; const positivo = m.tipo === 'Ingreso' || (m.tipo === 'Transferencia' && (m.subtipo === 'recibido' || m.subtipo === 'devolucion')); return (
-          <div key={m.id} style={{ background: m.espejo_de ? (sub?.[2] || '#f5f3ff') : '#fff', borderRadius: 14, padding: '12px 14px', border: `1px solid ${m.espejo_de ? '#e9d5ff' : '#f0f0f0'}` }}>
+          <div key={m.id} style={{ padding: '12px 0', borderBottom: '1px solid #EBE9F1' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.descripcion}</div>
-                <div style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>{m.tipo !== 'Transferencia' ? `${ix.cat[m.categoria_id]?.nombre || '—'} · ` : ''}{fmtDate(m.fecha)} · {cta ? nombreCuenta(cta) : 'cuenta de otro miembro'}{m.subtipo === 'traslado' && ix.cta[m.cuenta_destino_id] ? ` → ${nombreCuenta(ix.cta[m.cuenta_destino_id])}` : ''}</div>
-                {esp && <div style={{ fontSize: 10, color: sub?.[1] || '#7c3aed', marginTop: 2, fontWeight: 700 }}><IcoText name={m.subtipo === 'aporte' ? 'arrow-right' : 'refresh'} size={11} gap={4}>{m.tipo === 'Ingreso' ? 'Ingreso desde' : sub?.[0]} {esp.nombre} · reflejo automático, se edita allá</IcoText></div>}
-                {!m.espejo_de && m.cuenta_destino_id && m.tipo === 'Salida' && <div style={{ fontSize: 10, color: '#059669', marginTop: 2 }}><IcoText name="user" size={11} gap={4}>Pago a {nombreMiembro(duenoCuenta(ix.cta[m.cuenta_destino_id]) || '')} ({m.modo_destino === 'ingreso' ? 'ingreso para él' : 'devolución de aporte'})</IcoText></div>}
-                {rubro && <div style={{ fontSize: 10, color: '#7c3aed', marginTop: 1, display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="arrow-right" size={10} />{rubro.concepto}</div>}
-                {m.tc_cuenta_id && <div style={{ fontSize: 10, color: '#7c3aed', marginTop: 3 }}><Icon name="card" size={11} style={{ marginRight: 4 }} />Factura {ix.cta[m.tc_cuenta_id]?.nombre} · {d.items?.length || 0} cuota{d.items?.length !== 1 ? 's' : ''}{extras > 0 && <span style={{ color: '#d97706' }}> · extras {fmtCOP(extras)}</span>}{d.diferencia ? <span style={{ color: d.diferencia > 0 ? '#dc2626' : '#059669' }}> · dif. {d.diferencia > 0 ? '+' : ''}{fmtCOP(d.diferencia)}</span> : null}</div>}
-                {m.deuda_id && <div style={{ fontSize: 10, color: '#059669', marginTop: 3 }}><Icon name="check" size={11} style={{ marginRight: 4 }} />{ix.deu[m.deuda_id]?.nombre} · cuota {d.cuota} · capital {fmtCOP(d.capital)} · interés {fmtCOP(d.interes)}{extras > 0 && <span style={{ color: '#d97706' }}> · extras {fmtCOP(extras)}</span>}</div>}
-                {m.programado_id && !m.deuda_id && <div style={{ fontSize: 10, color: '#0891b2', marginTop: 3 }}><Icon name="calendar" size={11} style={{ marginRight: 4 }} />Desde programado</div>}
-                {m.motivo && <div style={{ fontSize: 10, color: '#b45309', marginTop: 3 }}><Icon name="alert" size={11} style={{ marginRight: 4 }} />{m.motivo}</div>}
-                <div style={{ fontSize: 9, color: '#b4b2a9', marginTop: 3 }}>{pag ? `Pagó ${pag} · ` : ''}Registró {nombreMiembro(m.creado_por)}</div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#1B1B1F', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.descripcion}</div>
+                <div style={{ fontSize: 12, color: '#6E6E73', marginTop: 2 }}>{m.tipo !== 'Transferencia' ? `${ix.cat[m.categoria_id]?.nombre || '—'} · ` : ''}{fmtDate(m.fecha)} · {cta ? nombreCuenta(cta) : 'cuenta de otro miembro'}{m.subtipo === 'traslado' && ix.cta[m.cuenta_destino_id] ? ` → ${nombreCuenta(ix.cta[m.cuenta_destino_id])}` : ''}</div>
+                {esp && <div style={{ fontSize: 10, color: sub?.[1] || '#4B1D9E', marginTop: 2, fontWeight: 700 }}><IcoText name={m.subtipo === 'aporte' ? 'arrow-right' : 'refresh'} size={11} gap={4}>{m.tipo === 'Ingreso' ? 'Ingreso desde' : sub?.[0]} {esp.nombre} · reflejo, se edita allá</IcoText></div>}
+                {!m.espejo_de && m.cuenta_destino_id && m.tipo === 'Salida' && <div style={{ fontSize: 10, color: '#138A5B', marginTop: 2 }}><IcoText name="user" size={11} gap={4}>Pago a {nombreMiembro(duenoCuenta(ix.cta[m.cuenta_destino_id]) || '')} ({m.modo_destino === 'ingreso' ? 'ingreso para él' : 'devolución de aporte'})</IcoText></div>}
+                {rubro && <div style={{ fontSize: 10, color: '#4B1D9E', marginTop: 1, display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="arrow-right" size={10} />{rubro.concepto}</div>}
+                {m.tc_cuenta_id && <div style={{ fontSize: 10, color: '#4B1D9E', marginTop: 3 }}><Icon name="card" size={11} style={{ marginRight: 4 }} />Factura {ix.cta[m.tc_cuenta_id]?.nombre} · {d.items?.length || 0} cuota{d.items?.length !== 1 ? 's' : ''}{extras > 0 && <span style={{ color: '#9A5B00' }}> · extras {fmtCOP(extras)}</span>}{d.diferencia ? <span style={{ color: d.diferencia > 0 ? '#B42318' : '#138A5B' }}> · dif. {d.diferencia > 0 ? '+' : ''}{fmtCOP(d.diferencia)}</span> : null}</div>}
+                {m.deuda_id && <div style={{ fontSize: 10, color: '#138A5B', marginTop: 3 }}><Icon name="check" size={11} style={{ marginRight: 4 }} />{ix.deu[m.deuda_id]?.nombre} · cuota {d.cuota} · capital {fmtCOP(d.capital)} · interés {fmtCOP(d.interes)}{extras > 0 && <span style={{ color: '#9A5B00' }}> · extras {fmtCOP(extras)}</span>}</div>}
+                {m.programado_id && !m.deuda_id && <div style={{ fontSize: 10, color: '#0F6E8C', marginTop: 3 }}><Icon name="calendar" size={11} style={{ marginRight: 4 }} />Desde programado</div>}
+                {m.motivo && <div style={{ fontSize: 10, color: '#9A5B00', marginTop: 3 }}><Icon name="alert" size={11} style={{ marginRight: 4 }} />{m.motivo}</div>}
+                <div style={{ fontSize: 11, color: '#9A9AA0', marginTop: 3 }}>{pag ? `Pagó ${pag} · ` : ''}Registró {nombreMiembro(m.creado_por)}</div>
               </div>
-              <div style={{ textAlign: 'right', flexShrink: 0 }}><div style={{ fontWeight: 800, fontSize: 14, color: positivo ? '#059669' : m.subtipo === 'traslado' ? '#0891b2' : '#dc2626' }}>{positivo ? '+' : m.subtipo === 'traslado' ? '' : '-'}{fmtCOP(m.monto)}</div><span style={{ background: positivo ? '#d1fae5' : m.tipo === 'Transferencia' ? '#ede9fe' : '#fee2e2', color: positivo ? '#065f46' : m.tipo === 'Transferencia' ? '#5b21b6' : '#991b1b', padding: '1px 7px', borderRadius: 8, fontSize: 10, fontWeight: 700 }}>{m.tipo === 'Transferencia' ? (m.subtipo === 'traslado' ? 'Traslado' : m.subtipo === 'aporte' ? 'Aporte' : 'Recibido') : m.tipo}</span></div>
+              <div style={{ textAlign: 'right', flexShrink: 0 }}><div style={{ fontWeight: 800, fontSize: 15, color: positivo ? '#138A5B' : '#1B1B1F', fontVariantNumeric: 'tabular-nums' }}>{positivo ? '+ ' : m.subtipo === 'traslado' ? '' : '− '}{fmtCOP(m.monto).replace('$ ', '')}</div><div style={{ color: m.tipo === 'Transferencia' ? '#4B1D9E' : '#6E6E73', fontSize: 11, fontWeight: 700, marginTop: 2 }}>{m.tipo === 'Transferencia' ? (m.subtipo === 'traslado' ? 'Traslado' : m.subtipo === 'aporte' ? 'Aporte' : 'Recibido') : m.tipo}</div></div>
             </div>
-            {!m.espejo_de && <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}><SmallBtn onClick={() => del(m)} bg="#fee2e2" color="#dc2626"><Icon name="trash" size={12} />Eliminar</SmallBtn></div>}
+            {!m.espejo_de && <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}><button onClick={() => del(m)} style={{ background: 'none', border: 'none', color: '#B42318', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="trash" size={12} />Eliminar</button></div>}
           </div>) })}
       </div>
 
@@ -101,27 +102,27 @@ export default function Movimientos({ goTo }) {
           {esTraslado && <Field label="Hacia"><select value={form.cuenta_destino_id || ''} onChange={e => sf('cuenta_destino_id', e.target.value)} style={sel}><option value="">— Selecciona —</option>{cuentasCaja.filter(x => x.id !== form.cuenta_id).map(x => <option key={x.id} value={x.id}>{nombreCuenta(x)}</option>)}</select></Field>}
           {!esTraslado && <Field label="Activo"><select value={form.activo_id || ''} onChange={e => sf('activo_id', e.target.value || null)} style={sel}><option value="">— Ninguno —</option>{db.activos.map(x => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select></Field>}
           {!isCreditPay && <Field label="Monto (COP)" full><input type="number" inputMode="numeric" value={form.monto} onChange={e => sf('monto', e.target.value)} style={inp} /></Field>}
-          {!esPersonal && form.tipo === 'Salida' && !isCreditPay && <div style={{ gridColumn: '1/-1', background: '#f0fdf4', borderRadius: 12, padding: '10px 12px', border: '1px solid #bbf7d0' }}>
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#065f46' }}><input type="checkbox" checked={form.aMiembro} onChange={e => sf('aMiembro', e.target.checked)} />Este pago es a un miembro del espacio</label>
+          {!esPersonal && form.tipo === 'Salida' && !isCreditPay && <div style={{ gridColumn: '1/-1', background: '#E7F5EE', borderRadius: 12, padding: '10px 12px', border: '1px solid #E7F5EE' }}>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#0F6B47' }}><input type="checkbox" checked={form.aMiembro} onChange={e => sf('aMiembro', e.target.checked)} />Este pago es a un miembro del espacio</label>
             {form.aMiembro && <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <Field label="Cuenta del miembro (debe estar habilitada aquí)"><select value={form.cuenta_destino_id || ''} onChange={e => sf('cuenta_destino_id', e.target.value)} style={sel}><option value="">— Selecciona —</option>{cuentasMiembros.map(x => <option key={x.id} value={x.id}>{nombreCuenta(x)}</option>)}</select></Field>
               <Field label="Para él cuenta como"><select value={form.modo_destino} onChange={e => sf('modo_destino', e.target.value)} style={sel}><option value="ingreso">Ingreso (honorarios, salario)</option><option value="devolucion">Devolución de aporte</option></select></Field>
             </div>}
           </div>}
-          {isCreditPay && <div style={{ gridColumn: '1/-1', background: '#f0fdf4', borderRadius: 12, padding: '12px 14px', border: '1px solid #bbf7d0' }}>
-            <div style={{ fontWeight: 700, fontSize: 12, color: '#065f46', marginBottom: 10 }}><IcoText name="landmark">Pago de crédito — conciliación</IcoText></div>
+          {isCreditPay && <div style={{ gridColumn: '1/-1', background: '#E7F5EE', borderRadius: 12, padding: '12px 14px', border: '1px solid #E7F5EE' }}>
+            <div style={{ fontWeight: 700, fontSize: 12, color: '#0F6B47', marginBottom: 10 }}><IcoText name="landmark">Pago de crédito — conciliación</IcoText></div>
             <Field label="Crédito"><select value={form.deuda_id} onChange={e => { sf('deuda_id', e.target.value); sf('cuotaN', '') }} style={sel}><option value="">— Selecciona —</option>{creditos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}</select></Field>
             {rCred && rCred.am.filter(c => !c.pago).length > 0 && <div style={{ marginTop: 10 }}><Field label="Cuota a pagar"><select value={form.cuotaN} onChange={e => sf('cuotaN', e.target.value)} style={sel}><option value="">— Selecciona —</option>{rCred.am.filter(c => !c.pago).slice(0, 12).map(c => <option key={c.n} value={c.n}>Cuota {c.n} · {fmtDate(c.fecha)} · {fmtCOP(c.total)}</option>)}</select></Field></div>}
-            {cuotaSel && <div style={{ marginTop: 12, background: '#fff', borderRadius: 10, padding: 12, border: '1px solid #d1fae5' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12 }}><span style={{ color: '#6b7280' }}>Capital</span><b>{fmtCOP(cuotaSel.capital)}</b></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, borderBottom: '2px solid #7c3aed', marginBottom: 8 }}><span style={{ color: '#6b7280' }}>Interés</span><b>{fmtCOP(cuotaSel.interes)}</b></div>
+            {cuotaSel && <div style={{ marginTop: 12, background: '#fff', borderRadius: 10, padding: 12, border: '1px solid #E7F5EE' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12 }}><span style={{ color: '#6E6E73' }}>Capital</span><b>{fmtCOP(cuotaSel.capital)}</b></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, borderBottom: '2px solid #4B1D9E', marginBottom: 8 }}><span style={{ color: '#6E6E73' }}>Interés</span><b>{fmtCOP(cuotaSel.interes)}</b></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6, marginBottom: 10 }}>
                 <Field label="Manejo"><input type="number" inputMode="numeric" value={form.manejo} onChange={e => sf('manejo', e.target.value)} style={inp} placeholder="0" /></Field>
                 <Field label="Mora"><input type="number" inputMode="numeric" value={form.mora} onChange={e => sf('mora', e.target.value)} style={inp} placeholder="0" /></Field>
                 <Field label="Seguros"><input type="number" inputMode="numeric" value={form.seguros} onChange={e => sf('seguros', e.target.value)} style={inp} placeholder="0" /></Field>
                 <Field label="Otros"><input type="number" inputMode="numeric" value={form.otros} onChange={e => sf('otros', e.target.value)} style={inp} placeholder="0" /></Field>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #059669', paddingTop: 8 }}><span style={{ fontWeight: 800, fontSize: 14 }}>TOTAL A PAGAR</span><span style={{ fontWeight: 800, fontSize: 14, color: '#059669' }}>{fmtCOP(totalCred)}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #138A5B', paddingTop: 8 }}><span style={{ fontWeight: 800, fontSize: 14 }}>TOTAL A PAGAR</span><span style={{ fontWeight: 800, fontSize: 14, color: '#138A5B' }}>{fmtCOP(totalCred)}</span></div>
             </div>}
           </div>}
           {!esTraslado && <Field label="Vincular a rubro del presupuesto" full><select value={form.presupuesto_id || ''} onChange={e => sf('presupuesto_id', e.target.value || null)} style={sel}><option value="">— Sin vincular —</option>{db.presupuesto.filter(p => p.periodo === form.fecha.slice(0, 7) + '-01').map(p => <option key={p.id} value={p.id}>{p.concepto}</option>)}</select></Field>}

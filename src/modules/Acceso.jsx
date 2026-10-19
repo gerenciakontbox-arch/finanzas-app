@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useAuth } from '../lib/auth'
-import { Icon, inp, SaveBtn, Aviso } from '../lib/ui'
+import { Icon, inp, SaveBtn, Aviso, T } from '../lib/ui'
 
-const wrap = { minHeight: '100vh', background: 'linear-gradient(160deg,#7c3aed,#4338ca)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }
-const card = { background: '#fff', borderRadius: 24, padding: '28px 24px', width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }
-const title = { fontSize: 22, fontWeight: 900, color: '#111', letterSpacing: '-0.5px', display: 'flex', alignItems: 'center', gap: 10 }
+const wrap = { minHeight: '100vh', background: T.morado, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 0 }
+const card = { background: '#fff', borderRadius: '28px 28px 0 0', padding: '28px 24px 40px', width: '100%', maxWidth: 480 }
+const title = { fontSize: 22, fontWeight: 900, color: T.tinta, letterSpacing: '-0.5px', display: 'flex', alignItems: 'center', gap: 10 }
+const Marca = ({ sub }) => (<div style={{ padding: '72px 24px 36px', color: '#fff', width: '100%', maxWidth: 480 }}><div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 30, fontWeight: 900, letterSpacing: '-1px' }}><Icon name="wallet" size={30} sw={2} />Akontapp</div><div style={{ fontSize: 14, opacity: 0.85, marginTop: 8, lineHeight: 1.5, maxWidth: 320 }}>{sub}</div></div>)
 
 const esStandalone = () => typeof window !== 'undefined' && (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true)
 
@@ -24,25 +25,24 @@ export function Login() {
     if (error) { setErr(/expired|invalid/i.test(error.message) ? 'Código inválido o vencido. Pide uno nuevo.' : error.message); setEstado('enviado') }
   }
   return (
-    <div style={wrap}><div style={card}>
-      <div style={title}><Icon name="wallet" size={26} style={{ color: '#7c3aed' }} />Akontapp</div>
-      <div style={{ fontSize: 13, color: '#6b7280', marginTop: 6, marginBottom: 22 }}>Presupuesto, deudas y patrimonio del hogar, en un solo lugar.</div>
+    <div style={{ ...wrap, flexDirection: 'column', justifyContent: 'space-between' }}><Marca sub="Tu plata personal, la de tu hogar y la de tu empresa, cada una en su espacio." /><div style={card}>
+      <div style={title}>{estado === 'enviado' || estado === 'verificando' ? 'Revisa tu correo' : 'Entrar'}</div>
+      <div style={{ fontSize: 13, color: T.gris, marginTop: 6, marginBottom: 22 }}>Sin contraseñas: te enviamos un código de un solo uso.</div>
       {estado === 'enviado' || estado === 'verificando' ? (<>
         <Aviso tipo="ok">Te enviamos un correo a <b>{email}</b> con un <b>código numérico</b>. Escríbelo aquí para entrar (solo el del correo más reciente; no abras el enlace). Revisa spam si no llega en un minuto.</Aviso>
-        <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginTop: 16 }}>Código</label>
-        <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={10} value={codigo} onChange={e => setCodigo(e.target.value.replace(/\D/g, ''))} onKeyDown={e => e.key === 'Enter' && verificar()} placeholder="código" autoFocus style={{ ...inp, marginTop: 6, marginBottom: 12, fontSize: 26, letterSpacing: '0.4em', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700 }} />
+        <label style={{ fontSize: 12, fontWeight: 600, color: T.gris, display: 'block', marginTop: 16 }}>Código</label>
+        <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={10} value={codigo} onChange={e => setCodigo(e.target.value.replace(/\D/g, ''))} onKeyDown={e => e.key === 'Enter' && verificar()} placeholder="000000" autoFocus style={{ ...inp, marginTop: 6, marginBottom: 12, fontSize: 26, letterSpacing: '0.3em', textAlign: 'center', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }} />
         {err && <div style={{ marginBottom: 10 }}><Aviso tipo="err">{err}</Aviso></div>}
         <div style={{ display: 'flex' }}><SaveBtn onClick={verificar} disabled={estado === 'verificando' || codigo.length < 6}>{estado === 'verificando' ? 'Verificando…' : 'Entrar con el código'}</SaveBtn></div>
-        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 14, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12, color: T.gris, marginTop: 14, lineHeight: 1.5 }}>
           {esStandalone() ? 'Estás en la app instalada: usa el código, no el enlace del correo (el enlace abre en el navegador, no aquí).' : 'El correo también trae un enlace; si lo abres desde este mismo navegador, entras sin escribir el código.'}
-          {' '}<button onClick={() => { setEstado('idle'); setCodigo(''); setErr('') }} style={{ background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', fontSize: 11, padding: 0 }}>Cambiar correo</button>
+          {' '}<button onClick={() => { setEstado('idle'); setCodigo(''); setErr('') }} style={{ background: 'none', border: 'none', color: T.morado, cursor: 'pointer', fontSize: 11, padding: 0, fontWeight: 700, fontFamily: 'inherit' }}>Cambiar correo</button>
         </div>
       </>) : (<>
-        <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Tu correo</label>
+        <label style={{ fontSize: 12, fontWeight: 600, color: T.gris }}>Tu correo</label>
         <input type="email" inputMode="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && enviar()} placeholder="nombre@correo.com" style={{ ...inp, marginTop: 6, marginBottom: 12, fontSize: 16 }} />
         {err && <div style={{ marginBottom: 10 }}><Aviso tipo="err">{err}</Aviso></div>}
         <div style={{ display: 'flex' }}><SaveBtn onClick={enviar} disabled={estado === 'enviando'}>{estado === 'enviando' ? 'Enviando…' : 'Enviarme el código por correo'}</SaveBtn></div>
-        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 14, lineHeight: 1.5 }}>Sin contraseñas. Te llega un código de un solo uso a tu correo.</div>
       </>)}
     </div></div>
   )
@@ -55,11 +55,11 @@ export function PrimerNombre() {
   if (oculto) return null
   const go = async () => { if (!nombre.trim()) return; setBusy(true); try { await cambiarMiNombre(nombre.trim()) } finally { setBusy(false) } }
   return (
-    <div style={{ margin: '14px 14px 0', background: '#fff', borderRadius: 16, padding: '14px 16px', border: '1px solid #e9d5ff', boxShadow: '0 6px 20px rgba(124,58,237,0.08)' }}>
-      <div style={{ fontWeight: 800, fontSize: 14, color: '#111' }}>¿Cómo te llamas?</div>
-      <div style={{ fontSize: 11, color: '#6b7280', margin: '4px 0 10px' }}>Así aparecerás en lo que registres y en los espacios que compartas.</div>
-      <div style={{ display: 'flex', gap: 8 }}><input value={nombre} onChange={e => setNombre(e.target.value)} onKeyDown={e => e.key === 'Enter' && go()} placeholder="Ej. Andrés" style={{ ...inp, flex: 1 }} /><SaveBtn onClick={go} disabled={busy || !nombre.trim()}>Guardar</SaveBtn></div>
-      <button onClick={() => setOculto(true)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 11, cursor: 'pointer', padding: 0, marginTop: 8 }}>Después</button>
+    <div style={{ margin: '16px 20px 0', background: T.superficie, borderRadius: 16, padding: '14px 16px' }}>
+      <div style={{ fontWeight: 800, fontSize: 15, color: T.tinta }}>¿Cómo te llamas?</div>
+      <div style={{ fontSize: 12, color: T.gris, margin: '4px 0 10px' }}>Así aparecerás en lo que registres y en los espacios que compartas.</div>
+      <div style={{ display: 'flex', gap: 8 }}><input value={nombre} onChange={e => setNombre(e.target.value)} onKeyDown={e => e.key === 'Enter' && go()} placeholder="Ej. Andrés" style={{ ...inp, flex: 1, background: '#fff' }} /><SaveBtn onClick={go} disabled={busy || !nombre.trim()}>Guardar</SaveBtn></div>
+      <button onClick={() => setOculto(true)} style={{ background: 'none', border: 'none', color: T.gris, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, marginTop: 10, fontFamily: 'inherit' }}>Después</button>
     </div>
   )
 }
@@ -67,22 +67,22 @@ export function PrimerNombre() {
 export function FaltaMigracion({ version }) {
   const { salir } = useAuth()
   return (
-    <div style={wrap}><div style={card}>
-      <div style={title}><Icon name="alert" size={26} style={{ color: '#d97706' }} />Base de datos desactualizada</div>
-      <div style={{ fontSize: 13, color: '#374151', marginTop: 10, lineHeight: 1.6 }}>
+    <div style={{ ...wrap, flexDirection: 'column', justifyContent: 'space-between' }}><Marca sub="Falta un paso en la base de datos." /><div style={card}>
+      <div style={title}><Icon name="alert" size={24} style={{ color: T.ambar }} />Base de datos desactualizada</div>
+      <div style={{ fontSize: 13, color: T.tinta, marginTop: 10, lineHeight: 1.6 }}>
         Esta versión de la app necesita el esquema <b>v{version}</b>. En Supabase → <b>SQL Editor</b> ejecuta el archivo <code>supabase/migrations/0002_espacios.sql</code> del repositorio y vuelve a abrir la app. No se pierde ningún dato.
       </div>
-      <div style={{ marginTop: 14 }}><button onClick={() => window.location.reload()} style={{ width: '100%', padding: 12, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, cursor: 'pointer' }}>Ya la ejecuté, reintentar</button></div>
-      <button onClick={salir} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 11, cursor: 'pointer', padding: 0, marginTop: 10 }}>Cerrar sesión</button>
+      <div style={{ marginTop: 14 }}><button onClick={() => window.location.reload()} style={{ width: '100%', height: 46, background: T.morado, color: '#fff', border: 'none', borderRadius: 23, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Ya la ejecuté, reintentar</button></div>
+      <button onClick={salir} style={{ background: 'none', border: 'none', color: T.gris, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, marginTop: 12, fontFamily: 'inherit' }}>Cerrar sesión</button>
     </div></div>
   )
 }
 
 export function SinConfigurar() {
   return (
-    <div style={wrap}><div style={card}>
-      <div style={title}><Icon name="alert" size={26} style={{ color: '#d97706' }} />Falta configuración</div>
-      <div style={{ fontSize: 13, color: '#374151', marginTop: 10, lineHeight: 1.6 }}>
+    <div style={{ ...wrap, flexDirection: 'column', justifyContent: 'space-between' }}><Marca sub="Falta configurar el despliegue." /><div style={card}>
+      <div style={title}><Icon name="alert" size={24} style={{ color: T.ambar }} />Falta configuración</div>
+      <div style={{ fontSize: 13, color: T.tinta, marginTop: 10, lineHeight: 1.6 }}>
         La app no tiene las credenciales de Supabase. En Netlify: <b>Project configuration → Environment variables</b> y agrega <code>VITE_SUPABASE_URL</code> y <code>VITE_SUPABASE_ANON_KEY</code>. Luego vuelve a desplegar.
       </div>
     </div></div>

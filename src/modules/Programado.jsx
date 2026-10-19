@@ -32,41 +32,41 @@ export default function Programado() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ display: 'flex', background: '#ede9fe', borderRadius: 12, padding: 4 }}>
-        {[['salida', 'Obligaciones', 'trending-down'], ['ingreso', 'Ingresos', 'dollar']].map(([k, l, i]) => <button key={k} onClick={() => setFlujo(k)} style={{ flex: 1, padding: '9px', borderRadius: 9, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13, background: flujo === k ? '#fff' : 'transparent', color: flujo === k ? '#7c3aed' : '#6d28d9', boxShadow: flujo === k ? '0 1px 3px rgba(0,0,0,0.08)' : 'none' }}><IcoText name={i} size={14}>{l}</IcoText></button>)}
+      <div style={{ display: 'flex', background: '#F3F1F8', borderRadius: 12, padding: 4 }}>
+        {[['salida', 'Obligaciones', 'trending-down'], ['ingreso', 'Ingresos', 'dollar']].map(([k, l, i]) => <button key={k} onClick={() => setFlujo(k)} style={{ flex: 1, height: 36, borderRadius: 18, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit', background: flujo === k ? '#fff' : 'transparent', color: flujo === k ? '#1B1B1F' : '#6E6E73', boxShadow: flujo === k ? '0 1px 3px rgba(27,27,31,0.08)' : 'none' }}><IcoText name={i} size={14}>{l}</IcoText></button>)}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><Kpi icon="alert" value={vencidas} label={flujo === 'ingreso' ? 'Cobros vencidos' : 'Pagos vencidos'} color={vencidas ? '#dc2626' : '#059669'} /><Kpi icon="dollar" value={fmtCOP(carga30)} label={flujo === 'ingreso' ? 'Por cobrar 30 días' : 'Por pagar 30 días'} color={flujo === 'ingreso' ? '#059669' : '#7c3aed'} /></div>
-      <Card><div style={{ fontWeight: 700, fontSize: 12, color: '#374151', marginBottom: 10 }}>Flujo programado · próximos 6 meses</div><BarChartCJ labels={mesData.map(x => x.mes)} datasets={[{ label: 'Ingresos', data: mesData.map(x => x.ingresos), backgroundColor: '#10b981', borderRadius: 4 }, { label: 'Obligaciones', data: mesData.map(x => x.salidas), backgroundColor: '#7c3aed', borderRadius: 4 }]} height={150} /></Card>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><Kpi icon="alert" value={vencidas} label={flujo === 'ingreso' ? 'Cobros vencidos' : 'Pagos vencidos'} color={vencidas ? '#B42318' : '#138A5B'} /><Kpi icon="dollar" value={fmtCOP(carga30)} label={flujo === 'ingreso' ? 'Por cobrar 30 días' : 'Por pagar 30 días'} color={flujo === 'ingreso' ? '#138A5B' : '#4B1D9E'} /></div>
+      <Card><div style={{ fontWeight: 700, fontSize: 12, color: '#1B1B1F', marginBottom: 10 }}>Flujo programado · próximos 6 meses</div><BarChartCJ labels={mesData.map(x => x.mes)} datasets={[{ label: 'Ingresos', data: mesData.map(x => x.ingresos), backgroundColor: '#138A5B', borderRadius: 4 }, { label: 'Obligaciones', data: mesData.map(x => x.salidas), backgroundColor: '#4B1D9E', borderRadius: 4 }]} height={150} /></Card>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', gap: 5 }}><PBtn active={vista === 'pendientes'} onClick={() => setVista('pendientes')}>Pendientes</PBtn><PBtn active={vista === 'historial'} onClick={() => setVista('historial')}>Historial</PBtn></div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setImportar(true)} title="Importar CSV" style={{ background: '#fff', color: '#7c3aed', border: '1px solid #c4b5fd', borderRadius: 10, padding: '9px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}><Icon name="upload" size={18} /></button>
+          <button onClick={() => setImportar(true)} title="Importar CSV" style={{ background: '#fff', color: '#4B1D9E', border: '1.5px solid #EBE9F1', borderRadius: 20, padding: '9px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}><Icon name="upload" size={18} /></button>
           <PrimaryBtn onClick={() => { setForm(empty(flujo)); setModal('add') }}><Icon name="plus" size={18} sw={2.2} /></PrimaryBtn>
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {items.length === 0 && <Card style={{ textAlign: 'center', color: '#9ca3af', fontSize: 13, padding: 30 }}>{vista === 'historial' ? 'Sin historial todavía.' : flujo === 'ingreso' ? 'Programa tus ingresos fijos: honorarios, salario, arriendos que recibes…' : 'Programa tus obligaciones recurrentes.'}</Card>}
+        {items.length === 0 && <Card style={{ textAlign: 'center', color: '#9A9AA0', fontSize: 13, padding: 30 }}>{vista === 'historial' ? 'Sin historial todavía.' : flujo === 'ingreso' ? 'Programa tus ingresos fijos: honorarios, salario, arriendos que recibes…' : 'Programa tus obligaciones recurrentes.'}</Card>}
         {items.map(p => { const d = daysLeft(p.vencimiento); const ing = p.flujo === 'ingreso'; const pendiente = p.estado === 'Pendiente'; const tieneFicha = p.ficha_url || p.ficha_usuario || p.ficha_referencia || p.ficha_instrucciones || Object.keys(p.ficha_valores || {}).length || db.programado_adjuntos.some(a => a.programado_id === p.id); return (
-          <div key={p.id} style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', border: '1px solid #f0f0f0', opacity: pendiente ? 1 : 0.75 }}>
+          <div key={p.id} style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', border: '1px solid #EBE9F1', opacity: pendiente ? 1 : 0.75 }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-              <div style={{ background: ing ? 'linear-gradient(135deg,#059669,#047857)' : 'linear-gradient(135deg,#7c3aed,#6d28d9)', borderRadius: 10, padding: '9px 11px', color: '#fff', flexShrink: 0 }}><Icon name={PICO[p.tipo] || 'pin'} size={18} /></div>
+              <div style={{ background: ing ? '#138A5B' : '#4B1D9E', borderRadius: 10, padding: '9px 11px', color: '#fff', flexShrink: 0 }}><Icon name={PICO[p.tipo] || 'pin'} size={18} /></div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, color: '#111' }}>{p.nombre}</div>
-                <div style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>{p.periodicidad}{p.activo_id ? ` · ${ix.act[p.activo_id]?.nombre}` : ''} · {ix.cta[p.cuenta_id] ? nombreCuenta(ix.cta[p.cuenta_id]) : '—'}{p.cuenta_destino_id && ix.cta[p.cuenta_destino_id] ? ` → ${nombreCuenta(ix.cta[p.cuenta_destino_id])}` : ''}</div>
-                {tieneFicha && <button onClick={() => setFicha(p)} style={{ marginTop: 4, fontSize: 10, background: '#f5f3ff', color: '#6d28d9', border: '1px solid #e9d5ff', borderRadius: 7, padding: '3px 8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="file" size={11} />Ver ficha de pago</button>}
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#1B1B1F' }}>{p.nombre}</div>
+                <div style={{ fontSize: 10, color: '#6E6E73', marginTop: 2 }}>{p.periodicidad}{p.activo_id ? ` · ${ix.act[p.activo_id]?.nombre}` : ''} · {ix.cta[p.cuenta_id] ? nombreCuenta(ix.cta[p.cuenta_id]) : '—'}{p.cuenta_destino_id && ix.cta[p.cuenta_destino_id] ? ` → ${nombreCuenta(ix.cta[p.cuenta_destino_id])}` : ''}</div>
+                {tieneFicha && <button onClick={() => setFicha(p)} style={{ marginTop: 4, fontSize: 10, background: '#F3F1F8', color: '#4B1D9E', border: '1px solid #D9D2EA', borderRadius: 7, padding: '3px 8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="file" size={11} />Ver ficha de pago</button>}
               </div>
               <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div style={{ fontWeight: 800, fontSize: 14, color: ing ? '#059669' : '#111' }}>{ing ? '+' : ''}{fmtCOP(p.monto)}</div>
-                {pendiente ? <span style={{ background: d < 0 ? '#fee2e2' : d <= 7 ? '#fef3c7' : '#f0fdf4', color: d < 0 ? '#991b1b' : d <= 7 ? '#92400e' : '#065f46', padding: '2px 7px', borderRadius: 9, fontSize: 10, fontWeight: 700 }}>{d < 0 ? `Vencido ${-d}d` : d === 0 ? 'Hoy' : `${d}d · ${fmtDate(p.vencimiento)}`}</span>
-                  : <span style={{ background: p.estado === 'Completado' ? '#d1fae5' : '#f1f5f9', color: p.estado === 'Completado' ? '#065f46' : '#64748b', padding: '2px 7px', borderRadius: 9, fontSize: 10, fontWeight: 700 }}>{p.estado} {fmtDate(p.completado_en)}</span>}
+                <div style={{ fontWeight: 800, fontSize: 14, color: ing ? '#138A5B' : '#1B1B1F' }}>{ing ? '+' : ''}{fmtCOP(p.monto)}</div>
+                {pendiente ? <span style={{ color: d < 0 ? '#B42318' : d <= 7 ? '#9A5B00' : '#6E6E73', fontSize: 12, fontWeight: 700 }}>{d < 0 ? `Vencido hace ${-d} día${-d === 1 ? '' : 's'}` : d === 0 ? 'Vence hoy' : `Vence en ${d} día${d === 1 ? '' : 's'} · ${fmtDate(p.vencimiento)}`}</span>
+                  : <span style={{ color: p.estado === 'Completado' ? '#138A5B' : '#6E6E73', fontSize: 12, fontWeight: 700 }}>{p.estado === 'Completado' ? 'Pagado' : p.estado} {fmtDate(p.completado_en)}</span>}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6, marginTop: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-              {pendiente && <SmallBtn onClick={() => setCompletar(p)} bg={ing ? '#059669' : '#7c3aed'} color="#fff"><Icon name="check" size={12} />{ing ? 'Cobrar' : 'Pagar'}</SmallBtn>}
-              {pendiente && <SmallBtn onClick={() => omitir(p)} bg="#f1f5f9" color="#64748b">Omitir</SmallBtn>}
-              {p.estado === 'Completado' && <SmallBtn onClick={() => deshacer(p)} bg="#fef3c7" color="#92400e">Deshacer</SmallBtn>}
-              {pendiente && <SmallBtn onClick={() => { setForm({ ...p, monto: String(p.monto), ficha_valores: p.ficha_valores || {}, aMiembro: !!p.cuenta_destino_id, cuenta_destino_id: p.cuenta_destino_id || '', modo_destino: p.modo_destino || (espacio.tipo === 'empresa' ? 'ingreso' : 'devolucion') }); setModal(p) }} bg="#ede9fe" color="#7c3aed"><Icon name="pencil" size={12} /></SmallBtn>}
-              {pendiente && <SmallBtn onClick={() => eliminarSerie(p)} bg="#fee2e2" color="#dc2626"><Icon name="trash" size={12} /></SmallBtn>}
+              {pendiente && <SmallBtn onClick={() => setCompletar(p)} bg={ing ? '#138A5B' : '#4B1D9E'} color="#fff"><Icon name="check" size={12} />{ing ? 'Cobrar' : 'Pagar'}</SmallBtn>}
+              {pendiente && <SmallBtn onClick={() => omitir(p)} bg="#F3F1F8" color="#6E6E73">Omitir</SmallBtn>}
+              {p.estado === 'Completado' && <SmallBtn onClick={() => deshacer(p)} bg="#FBF0DA" color="#9A5B00">Deshacer</SmallBtn>}
+              {pendiente && <SmallBtn onClick={() => { setForm({ ...p, monto: String(p.monto), ficha_valores: p.ficha_valores || {}, aMiembro: !!p.cuenta_destino_id, cuenta_destino_id: p.cuenta_destino_id || '', modo_destino: p.modo_destino || (espacio.tipo === 'empresa' ? 'ingreso' : 'devolucion') }); setModal(p) }} bg="#F3F1F8" color="#4B1D9E"><Icon name="pencil" size={12} /></SmallBtn>}
+              {pendiente && <SmallBtn onClick={() => eliminarSerie(p)} bg="#FBEAE7" color="#B42318"><Icon name="trash" size={12} /></SmallBtn>}
             </div>
           </div>) })}
       </div>
@@ -136,24 +136,24 @@ function ImportarProgramado({ flujo, onClose }) {
       {!parsed ? <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <Aviso tipo="info">CSV con columnas <b>nombre</b>, <b>monto</b> y <b>vencimiento</b> (obligatorias) y opcionales <code>periodicidad, tipo, categoria, cuenta, activo, enlace, usuario, referencia, instrucciones, notas</code>. Periodicidad: {PERIODICIDADES.join(', ')}. Acepta <code>1.200.000</code> y fechas <code>DD/MM/AAAA</code>. Cada fila queda como la <b>próxima ocurrencia</b>; al {ing ? 'cobrar' : 'pagar'} se genera la siguiente.</Aviso>
         {!ing && <Aviso tipo="warn">La ficha de pago (enlace, usuario, referencia) se importa; las <b>contraseñas no</b>. Si el archivo trae una columna de contraseña, se ignora.</Aviso>}
-        <button onClick={plantilla} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, border: '1px solid #d1d5db', borderRadius: 12, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#374151' }}><Icon name="download" size={16} />Descargar plantilla CSV</button>
-        <div onClick={() => fileRef.current.click()} style={{ border: '2px dashed #c4b5fd', borderRadius: 14, padding: '28px 16px', textAlign: 'center', cursor: 'pointer', background: '#faf5ff' }}>
-          <div style={{ color: '#7c3aed', marginBottom: 8 }}><Icon name="upload" size={30} sw={1.5} /></div><div style={{ fontWeight: 700, fontSize: 14, color: '#4c1d95' }}>Toca para elegir el archivo</div>
+        <button onClick={plantilla} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, border: '1px solid #D9D2EA', borderRadius: 12, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#1B1B1F' }}><Icon name="download" size={16} />Descargar plantilla CSV</button>
+        <div onClick={() => fileRef.current.click()} style={{ border: '2px dashed #D9D2EA', borderRadius: 14, padding: '28px 16px', textAlign: 'center', cursor: 'pointer', background: '#F3F1F8' }}>
+          <div style={{ color: '#4B1D9E', marginBottom: 8 }}><Icon name="upload" size={30} sw={1.5} /></div><div style={{ fontWeight: 700, fontSize: 14, color: '#36146F' }}>Toca para elegir el archivo</div>
           <input ref={fileRef} type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" style={{ display: 'none' }} onChange={e => { const f = e.target.files[0]; if (f) leer(f); e.target.value = '' }} />
         </div>
         {err && <Aviso tipo="err">{err}</Aviso>}
       </div> : <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}><Kpi value={validos.length} label="Válidas" color="#059669" /><Kpi value={validos.filter(x => x.w.length).length} label="Con avisos" color="#d97706" /><Kpi value={parsed.items.length - validos.length} label="Con errores" color="#dc2626" /></div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}><Kpi value={validos.length} label="Válidas" color="#138A5B" /><Kpi value={validos.filter(x => x.w.length).length} label="Con avisos" color="#9A5B00" /><Kpi value={parsed.items.length - validos.length} label="Con errores" color="#B42318" /></div>
         {(parsed.nuevos.cat.length + parsed.nuevos.cta.length) > 0 && <Aviso tipo="warn"><label style={{ display: 'flex', gap: 8, cursor: 'pointer' }}><input type="checkbox" checked={crear} onChange={e => setCrear(e.target.checked)} /><span>Crear lo que no existe: {[...parsed.nuevos.cat, ...parsed.nuevos.cta].join(', ')}</span></label></Aviso>}
-        <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden', maxHeight: 300, overflowY: 'auto' }}>
-          {parsed.items.map(x => <div key={x.n} style={{ padding: '8px 10px', borderBottom: '1px solid #f3f4f6', background: x.e.length ? '#fff5f5' : x.w.length ? '#fffbeb' : '#fff' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12, fontWeight: 700, color: x.e.length ? '#991b1b' : '#111' }}><span style={{ color: '#9ca3af', fontWeight: 500 }}>#{x.n} </span>{x.nombre || '(sin nombre)'}</div>
-              <div style={{ fontSize: 10, color: '#6b7280' }}>{x.tipo} · {x.periodicidad} · {x.vencimiento ? fmtDate(x.vencimiento) : 'sin fecha'} · {x.cta ? nombreCuenta(x.cta) : x.ctaRaw || '—'}{x.enlace || x.referencia ? ' · con ficha' : ''}</div>
-              {x.e.map((m, i) => <div key={i} style={{ fontSize: 10, color: '#dc2626' }}>✕ {m}</div>)}{x.w.map((m, i) => <div key={i} style={{ fontSize: 10, color: '#b45309' }}>· {m}</div>)}</div>
-              <div style={{ fontWeight: 800, fontSize: 12, whiteSpace: 'nowrap', color: ing ? '#059669' : '#111' }}>{isNaN(x.monto) ? '—' : fmtCOP(x.monto)}</div></div>
+        <div style={{ border: '1px solid #EBE9F1', borderRadius: 12, overflow: 'hidden', maxHeight: 300, overflowY: 'auto' }}>
+          {parsed.items.map(x => <div key={x.n} style={{ padding: '8px 10px', borderBottom: '1px solid #F3F1F8', background: x.e.length ? '#fff5f5' : x.w.length ? '#FBF0DA' : '#fff' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12, fontWeight: 700, color: x.e.length ? '#B42318' : '#1B1B1F' }}><span style={{ color: '#9A9AA0', fontWeight: 500 }}>#{x.n} </span>{x.nombre || '(sin nombre)'}</div>
+              <div style={{ fontSize: 10, color: '#6E6E73' }}>{x.tipo} · {x.periodicidad} · {x.vencimiento ? fmtDate(x.vencimiento) : 'sin fecha'} · {x.cta ? nombreCuenta(x.cta) : x.ctaRaw || '—'}{x.enlace || x.referencia ? ' · con ficha' : ''}</div>
+              {x.e.map((m, i) => <div key={i} style={{ fontSize: 10, color: '#B42318' }}>✕ {m}</div>)}{x.w.map((m, i) => <div key={i} style={{ fontSize: 10, color: '#9A5B00' }}>· {m}</div>)}</div>
+              <div style={{ fontWeight: 800, fontSize: 12, whiteSpace: 'nowrap', color: ing ? '#138A5B' : '#1B1B1F' }}>{isNaN(x.monto) ? '—' : fmtCOP(x.monto)}</div></div>
           </div>)}
         </div>
-        <div style={{ fontSize: 11, color: '#6b7280', textAlign: 'right' }}>Total a importar: <b>{fmtCOP(total)}</b></div>
+        <div style={{ fontSize: 11, color: '#6E6E73', textAlign: 'right' }}>Total a importar: <b>{fmtCOP(total)}</b></div>
         <div style={{ display: 'flex', gap: 10 }}><CancelBtn onClick={() => setParsed(null)} /><SaveBtn onClick={confirmar} disabled={!validos.length}>Importar {validos.length}</SaveBtn></div>
       </div>}
     </Modal>
@@ -180,16 +180,16 @@ function FormProgramado({ form, sf, setForm, modal, onClose, onSave }) {
         <Field label={ing ? 'Cuenta donde entra' : 'Cuenta de pago'}><select value={form.cuenta_id || ''} onChange={e => sf('cuenta_id', e.target.value || null)} style={sel}>{cuentasCaja.map(x => <option key={x.id} value={x.id}>{nombreCuenta(x)}</option>)}</select></Field>
         <Field label="Activo"><select value={form.activo_id || ''} onChange={e => sf('activo_id', e.target.value || null)} style={sel}><option value="">— Ninguno —</option>{db.activos.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}</select></Field>
       </div>
-      {!esPersonal && !ing && <div style={{ marginTop: 12, background: '#f0fdf4', borderRadius: 12, padding: '10px 12px', border: '1px solid #bbf7d0' }}>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#065f46' }}><input type="checkbox" checked={!!form.aMiembro} onChange={e => sf('aMiembro', e.target.checked)} />Este pago es a un miembro del espacio (honorarios, salario, devolución)</label>
+      {!esPersonal && !ing && <div style={{ marginTop: 12, background: '#E7F5EE', borderRadius: 12, padding: '10px 12px', border: '1px solid #E7F5EE' }}>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#0F6B47' }}><input type="checkbox" checked={!!form.aMiembro} onChange={e => sf('aMiembro', e.target.checked)} />Este pago es a un miembro del espacio (honorarios, salario, devolución)</label>
         {form.aMiembro && <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <Field label="Cuenta del miembro"><select value={form.cuenta_destino_id || ''} onChange={e => sf('cuenta_destino_id', e.target.value)} style={sel}><option value="">— Selecciona —</option>{cuentasMiembros.map(x => <option key={x.id} value={x.id}>{nombreCuenta(x)}</option>)}</select></Field>
           <Field label="Para él cuenta como"><select value={form.modo_destino || 'ingreso'} onChange={e => sf('modo_destino', e.target.value)} style={sel}><option value="ingreso">Ingreso</option><option value="devolucion">Devolución de aporte</option></select></Field>
         </div>}
       </div>}
-      {!ing && <div style={{ marginTop: 16, background: '#faf5ff', borderRadius: 12, padding: '12px 14px', border: '1px solid #e9d5ff' }}>
-        <div style={{ fontWeight: 700, fontSize: 12, color: '#6d28d9', marginBottom: 4 }}><IcoText name="file">Ficha de pago</IcoText></div>
-        <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 10 }}>Todo lo que necesitas a la mano para pagar en un minuto. <b>Nunca guardes contraseñas aquí</b>; usa tu gestor de contraseñas.</div>
+      {!ing && <div style={{ marginTop: 16, background: '#F3F1F8', borderRadius: 12, padding: '12px 14px', border: '1px solid #D9D2EA' }}>
+        <div style={{ fontWeight: 700, fontSize: 12, color: '#4B1D9E', marginBottom: 4 }}><IcoText name="file">Ficha de pago</IcoText></div>
+        <div style={{ fontSize: 10, color: '#6E6E73', marginBottom: 10 }}>Todo lo que necesitas a la mano para pagar en un minuto. <b>Nunca guardes contraseñas aquí</b>; usa tu gestor de contraseñas.</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <Field label="Enlace de pago" full><input type="url" value={form.ficha_url || ''} onChange={e => sf('ficha_url', e.target.value)} style={inp} placeholder="https://…" /></Field>
           <Field label="Usuario"><input value={form.ficha_usuario || ''} onChange={e => sf('ficha_usuario', e.target.value)} style={inp} /></Field>
@@ -197,12 +197,12 @@ function FormProgramado({ form, sf, setForm, modal, onClose, onSave }) {
           <Field label="Instrucciones" full><textarea value={form.ficha_instrucciones || ''} onChange={e => sf('ficha_instrucciones', e.target.value)} rows={2} style={{ ...inp, resize: 'vertical' }} placeholder="Ej. Pagar por PSE, opción 'Convenio 1234'…" /></Field>
         </div>
         <div style={{ marginTop: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', marginBottom: 4 }}>Otros datos</div>
-          {Object.entries(form.ficha_valores || {}).map(([k, v]) => <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '5px 8px', background: '#fff', borderRadius: 8, marginBottom: 4 }}><span><b>{k}:</b> {v}</span><button onClick={() => delValor(k)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 16 }}>×</button></div>)}
-          <div style={{ display: 'flex', gap: 6 }}><input value={nk} onChange={e => setNk(e.target.value)} placeholder="Etiqueta (NIT, convenio…)" style={{ ...inp, flex: 1 }} /><input value={nv} onChange={e => setNv(e.target.value)} placeholder="Valor" style={{ ...inp, flex: 1 }} onKeyDown={e => e.key === 'Enter' && addValor()} /><button onClick={addValor} style={{ background: '#6d28d9', color: '#fff', border: 'none', borderRadius: 10, padding: '0 12px', cursor: 'pointer' }}><Icon name="plus" size={14} /></button></div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#6E6E73', marginBottom: 4 }}>Otros datos</div>
+          {Object.entries(form.ficha_valores || {}).map(([k, v]) => <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '5px 8px', background: '#fff', borderRadius: 8, marginBottom: 4 }}><span><b>{k}:</b> {v}</span><button onClick={() => delValor(k)} style={{ background: 'none', border: 'none', color: '#B42318', cursor: 'pointer', fontSize: 16 }}>×</button></div>)}
+          <div style={{ display: 'flex', gap: 6 }}><input value={nk} onChange={e => setNk(e.target.value)} placeholder="Etiqueta (NIT, convenio…)" style={{ ...inp, flex: 1 }} /><input value={nv} onChange={e => setNv(e.target.value)} placeholder="Valor" style={{ ...inp, flex: 1 }} onKeyDown={e => e.key === 'Enter' && addValor()} /><button onClick={addValor} style={{ background: '#4B1D9E', color: '#fff', border: 'none', borderRadius: 10, padding: '0 12px', cursor: 'pointer' }}><Icon name="plus" size={14} /></button></div>
         </div>
         {modal !== 'add' && <Adjuntos programadoId={modal.id} />}
-        {modal === 'add' && <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 8 }}>Las imágenes se adjuntan después de guardar (botón Editar).</div>}
+        {modal === 'add' && <div style={{ fontSize: 10, color: '#9A9AA0', marginTop: 8 }}>Las imágenes se adjuntan después de guardar (botón Editar).</div>}
       </div>}
       <div style={{ marginTop: 12 }}><Field label="Notas"><input value={form.notas || ''} onChange={e => sf('notas', e.target.value)} style={inp} /></Field></div>
       <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={onClose} /><SaveBtn onClick={onSave} disabled={!form.nombre || !form.monto}>Guardar</SaveBtn></div>
@@ -218,14 +218,14 @@ function Adjuntos({ programadoId, soloLectura }) {
   const subir = async f => { setBusy(true); try { await subirAdjunto(programadoId, f) } catch (e) { alert('No se pudo subir: ' + e.message) } finally { setBusy(false) } }
   return (
     <div style={{ marginTop: 10 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', marginBottom: 6 }}>Adjuntos ({adj.length})</div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#6E6E73', marginBottom: 6 }}>Adjuntos ({adj.length})</div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {adj.map(a => <div key={a.id} style={{ position: 'relative', width: 84 }}>
-          <a href={urls[a.id]} target="_blank" rel="noreferrer" style={{ display: 'block', width: 84, height: 84, borderRadius: 10, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#f9fafb' }}>{a.mime?.startsWith('image/') && urls[a.id] ? <img src={urls[a.id]} alt={a.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#7c3aed' }}><Icon name="file" size={28} /></div>}</a>
-          <div style={{ fontSize: 9, color: '#6b7280', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.nombre}</div>
-          {!soloLectura && <button onClick={() => { if (window.confirm('¿Eliminar adjunto?')) borrarAdjunto(a) }} style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', background: '#dc2626', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12, lineHeight: 1 }}>×</button>}
+          <a href={urls[a.id]} target="_blank" rel="noreferrer" style={{ display: 'block', width: 84, height: 84, borderRadius: 10, overflow: 'hidden', border: '1px solid #EBE9F1', background: '#EBE9F1' }}>{a.mime?.startsWith('image/') && urls[a.id] ? <img src={urls[a.id]} alt={a.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#4B1D9E' }}><Icon name="file" size={28} /></div>}</a>
+          <div style={{ fontSize: 9, color: '#6E6E73', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.nombre}</div>
+          {!soloLectura && <button onClick={() => { if (window.confirm('¿Eliminar adjunto?')) borrarAdjunto(a) }} style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', background: '#B42318', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12, lineHeight: 1 }}>×</button>}
         </div>)}
-        {!soloLectura && <button onClick={() => ref.current.click()} disabled={busy} style={{ width: 84, height: 84, borderRadius: 10, border: '2px dashed #c4b5fd', background: '#faf5ff', color: '#7c3aed', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, fontSize: 10 }}><Icon name="upload" size={20} />{busy ? 'Subiendo…' : 'Imagen/PDF'}</button>}
+        {!soloLectura && <button onClick={() => ref.current.click()} disabled={busy} style={{ width: 84, height: 84, borderRadius: 10, border: '2px dashed #D9D2EA', background: '#F3F1F8', color: '#4B1D9E', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, fontSize: 10 }}><Icon name="upload" size={20} />{busy ? 'Subiendo…' : 'Imagen/PDF'}</button>}
         <input ref={ref} type="file" accept="image/*,application/pdf" capture="environment" style={{ display: 'none' }} onChange={e => { const f = e.target.files[0]; if (f) subir(f); e.target.value = '' }} />
       </div>
     </div>
@@ -235,14 +235,14 @@ function Adjuntos({ programadoId, soloLectura }) {
 function FichaPago({ p, onClose, onCompletar }) {
   const ix = useIndices(); const { nombreCuenta } = useData(); const ing = p.flujo === 'ingreso'
   const copiar = async v => { try { await navigator.clipboard.writeText(v) } catch { } }
-  const Row = ({ l, v, copy }) => v ? <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #f3f4f6' }}><div><div style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', fontWeight: 700 }}>{l}</div><div style={{ fontSize: 14, fontWeight: 600, color: '#111', wordBreak: 'break-all' }}>{v}</div></div>{copy && <button onClick={() => copiar(v)} style={{ fontSize: 11, background: '#f1f5f9', border: 'none', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', color: '#374151', flexShrink: 0 }}>Copiar</button>}</div> : null
+  const Row = ({ l, v, copy }) => v ? <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #F3F1F8' }}><div><div style={{ fontSize: 10, color: '#9A9AA0', fontWeight: 700 }}>{l}</div><div style={{ fontSize: 14, fontWeight: 600, color: '#1B1B1F', wordBreak: 'break-all' }}>{v}</div></div>{copy && <button onClick={() => copiar(v)} style={{ fontSize: 11, background: '#F3F1F8', border: 'none', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', color: '#1B1B1F', flexShrink: 0 }}>Copiar</button>}</div> : null
   return (
     <Modal title={p.nombre} onClose={onClose}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}><div style={{ fontSize: 12, color: '#6b7280' }}>Vence {fmtDate(p.vencimiento)} · {ix.cta[p.cuenta_id] ? nombreCuenta(ix.cta[p.cuenta_id]) : '—'}</div><div style={{ fontWeight: 800, fontSize: 18, color: ing ? '#059669' : '#7c3aed' }}>{fmtCOP(p.monto)}</div></div>
-      {p.ficha_url && <a href={p.ficha_url} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, background: '#7c3aed', color: '#fff', borderRadius: 12, textDecoration: 'none', fontWeight: 700, fontSize: 14, marginBottom: 10 }}><Icon name="arrow-right" size={16} />Ir a pagar</a>}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}><div style={{ fontSize: 12, color: '#6E6E73' }}>Vence {fmtDate(p.vencimiento)} · {ix.cta[p.cuenta_id] ? nombreCuenta(ix.cta[p.cuenta_id]) : '—'}</div><div style={{ fontWeight: 800, fontSize: 18, color: ing ? '#138A5B' : '#4B1D9E' }}>{fmtCOP(p.monto)}</div></div>
+      {p.ficha_url && <a href={p.ficha_url} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, background: '#4B1D9E', color: '#fff', borderRadius: 12, textDecoration: 'none', fontWeight: 700, fontSize: 14, marginBottom: 10 }}><Icon name="arrow-right" size={16} />Ir a pagar</a>}
       <Row l="Usuario" v={p.ficha_usuario} copy /><Row l="Referencia" v={p.ficha_referencia} copy />
       {Object.entries(p.ficha_valores || {}).map(([k, v]) => <Row key={k} l={k} v={v} copy />)}
-      {p.ficha_instrucciones && <div style={{ marginTop: 10, background: '#fffbeb', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#78350f', whiteSpace: 'pre-wrap' }}>{p.ficha_instrucciones}</div>}
+      {p.ficha_instrucciones && <div style={{ marginTop: 10, background: '#FBF0DA', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#9A5B00', whiteSpace: 'pre-wrap' }}>{p.ficha_instrucciones}</div>}
       <Adjuntos programadoId={p.id} soloLectura />
       {p.estado === 'Pendiente' && <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={onClose} /><SaveBtn onClick={onCompletar}>{ing ? 'Ya lo cobré' : 'Ya lo pagué'}</SaveBtn></div>}
     </Modal>

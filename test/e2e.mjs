@@ -14,7 +14,8 @@ page.on('dialog', d => d.accept())
 const T = () => page.evaluate(() => document.body.innerText)
 const DB = fn => page.evaluate(fn)
 const wait = ms => page.waitForTimeout(ms)
-const tab = async l => { await page.locator('button', { hasText: l }).last().click(); await wait(200) }
+const NAV = { 'Inicio': ['Inicio'], 'Movim.': ['Movimientos'], 'Deudas': ['Deudas'], 'Presup.': ['Plan', 'Presupuesto'], 'Progr.': ['Plan', 'Programado'], 'Activos': ['Más', 'Activos'], 'Config': ['Más', 'Ajustes'] }
+const tab = async l => { const [n, seg] = NAV[l] || [l]; await page.locator('nav button', { hasText: new RegExp('^' + n + '$') }).click(); await wait(150); if (seg) { await page.locator('[role=tab]', { hasText: seg }).click(); await wait(200) } }
 const click = async (sel, opt) => { await page.locator(sel, opt).first().click(); await wait(150) }
 const submit = async (txt) => { await page.locator('button', { hasText: txt }).last().click(); await wait(250) }
 const fillLabel = async (label, v) => { const el = page.locator(`label:has-text("${label}")`).first().locator('xpath=following-sibling::*[1]'); await el.fill(String(v)) }
@@ -30,9 +31,9 @@ ok('Pide el código del correo', /código numérico/.test(await T()))
 await page.fill('input[inputmode=numeric]', '999999'); await click('button', { hasText: 'Entrar con el código' }); await wait(200)
 ok('Código inválido rechazado', /Código inválido o vencido/.test(await T()))
 await page.fill('input[inputmode=numeric]', '123456'); await click('button', { hasText: 'Entrar con el código' }); await wait(500)
-ok('Entra directo al espacio personal (sin onboarding) y pide el nombre', /Personal/.test(await T()) && /¿Cómo te llamas\?/.test(await T()) && /Presupuestado/.test(await T()))
+ok('Entra directo al espacio personal (sin onboarding) y pide el nombre', /Espacio personal/.test(await T()) && /¿Cómo te llamas\?/.test(await T()) && /Anotar gasto/.test(await T()))
 await page.fill('input[placeholder="Ej. Andrés"]', 'Andrés'); await click('button', { hasText: 'Guardar' }); await wait(300)
-ok('Nombre guardado en cabecera', /Andrés · /.test(await T()) && !/¿Cómo te llamas\?/.test(await T()))
+ok('Nombre guardado en cabecera', /Hola, Andrés/.test(await T()) && !/¿Cómo te llamas\?/.test(await T()))
 
 // Cuentas personales (+ bug del foco)
 await tab('Config'); await click('button', { hasText: 'Cuentas' })
@@ -72,7 +73,7 @@ ok('Gasto del hogar → aporte espejo en el personal de Andrés', st.ok && /Pag�
 // Personal: el espejo se ve, no se borra; presupuesto muestra aportes planificados
 await cambiarEspacio('Personal'); await tab('Movim.')
 await page.screenshot({ path: 'test/shot-mov-personal.png', fullPage: true })
-ok('Espejo visible como "Aporte a Casa Quijano", sin botón eliminar', /Aporte a Casa Quijano · Mercado Éxito/.test(await T()) && /reflejo automático/.test(await T()) && (await page.locator('button', { hasText: 'Eliminar' }).count()) === 0)
+ok('Espejo visible como "Aporte a Casa Quijano", sin botón eliminar', /Aporte a Casa Quijano · Mercado Éxito/.test(await T()) && /reflejo, se edita allá/.test(await T()) && (await page.locator('button', { hasText: 'Eliminar' }).count()) === 0)
 ok('KPI de aportes en personal', /Aportes/.test(await T()))
 await tab('Presup.')
 ok('Aportes planificados a Casa Quijano: 120.000 / 800.000', /Aportes planificados a mis espacios/.test(await T()) && /\$ 120\.000 \/ \$ 800\.000/.test(await T()))
@@ -136,8 +137,13 @@ await page.locator('label:has-text("Este pago es a un miembro") input').check();
 st = await DB(() => { const T = window.__sb._T; const m = T.movimientos.find(x => x.descripcion === 'Honorarios octubre'); const esp = T.movimientos.find(x => x.espejo_de === m?.id); const p = T.espacios.find(e => e.tipo === 'personal' && e.dueno_id === 'u-andres').id; return esp && esp.espacio_id === p && esp.tipo === 'Ingreso' && +esp.monto === 8500000 && T.categorias.find(c => c.id === esp.categoria_id)?.nombre === 'Honorarios' })
 ok('Kontbox → honorarios caen como Ingreso en el personal de Andrés', st && /Pago a Andrés/.test(await T()))
 await cambiarEspacio('Personal'); await tab('Movim.'); ok('Ingreso desde Kontbox visible en personal', /Kontbox · Honorarios octubre/.test(await T()) && /Ingreso desde Kontbox/.test(await T()))
-await tab('Inicio'); await page.screenshot({ path: 'test/shot-inicio-personal.png', fullPage: true }); ok('Inicio personal: cuentas con saldo, aportes por espacio', /Mis cuentas/.test(await T()) && /Mis espacios compartidos/.test(await T()) && /Casa Quijano/.test(await T()))
+await tab('Inicio'); await page.screenshot({ path: 'test/shot-inicio-personal.png', fullPage: true }); ok('Inicio personal: cuentas con saldo, aportes por espacio', /Mis cuentas/.test(await T()) && /Mis espacios/.test(await T()) && /Casa Quijano/.test(await T()) && /Aporté/.test(await T()))
 await cambiarEspacio('Casa Quijano'); await tab('Inicio'); await page.screenshot({ path: 'test/shot-inicio-hogar.png', fullPage: true }); ok('Inicio del hogar: aportes por miembro', /Aportes por miembro/.test(await T()) && /Andrés/.test(await T()))
+// Capturas de todas las pantallas (revisión visual)
+await cambiarEspacio('Personal')
+for (const [k, f] of [['Movim.', 'mov'], ['Presup.', 'presup'], ['Progr.', 'progr'], ['Deudas', 'deudas'], ['Activos', 'activos'], ['Config', 'config']]) { await tab(k); await page.screenshot({ path: `test/shot-${f}.png`, fullPage: true }) }
+await tab('Movim.'); await page.locator('div:has(> div > button:has-text("Todos")) > button').last().click(); await wait(200); await page.screenshot({ path: 'test/shot-modal-mov.png' }); await page.locator('button[aria-label="Cerrar"]').click(); await wait(150)
+await cambiarEspacio('Casa Quijano'); await tab('Deudas'); await page.screenshot({ path: 'test/shot-deudas-hogar.png', fullPage: true })
 
 // Amigo: aislamiento total
 await loginAs('u-amigo', 'amigo@test.co'); await page.fill('input[placeholder="Ej. Andrés"]', 'Amigo'); await click('button', { hasText: 'Guardar' }); await wait(200)

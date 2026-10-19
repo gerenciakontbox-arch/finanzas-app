@@ -1,18 +1,38 @@
 import { useData, useIndices } from '../lib/data'
-import { Kpi, Card, Badge, IcoText, Icon, BarChartCJ, PieChartCJ } from '../lib/ui'
+import { Icon, T, BarChartCJ, PieChartCJ } from '../lib/ui'
 import { fmtCOP, fmtDate, today, addDays, daysLeft, GRUPOS, TC, primeroDelMes } from '../lib/util'
 import { deudaTotal, presupuestoConEjecucion, resumenTarjeta, indicePagadas, aportesPorEspacio, aportesPorMiembro, aportesPlanificados } from '../lib/finanzas'
 import { useAuth } from '../lib/auth'
+import { TIPO_ICON } from '../App'
 
-const ECLS = { Planificado: '#f1f5f9|#64748b', Programado: '#dbeafe|#1e40af', Pagado: '#d1fae5|#065f46', Cancelado: '#fee2e2|#991b1b' }
-const PICO = { Impuesto: 'receipt', Seguro: 'shield', Mantenimiento: 'wrench', 'Cuota crédito': 'card', Servicio: 'wifi', Suscripción: 'refresh', Nómina: 'user', Honorarios: 'dollar', Arriendo: 'home', Otro: 'pin' }
+const MES_LARGO = d => d.toLocaleDateString('es-CO', { month: 'long' })
+
+const Seccion = ({ titulo, extra, children, style }) => (
+  <section style={{ padding: '24px 20px 0', ...style }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}><h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: T.tinta }}>{titulo}</h2>{extra && <span style={{ fontSize: 13, fontWeight: 700, color: T.gris }}>{extra}</span>}</div>
+    {children}
+  </section>
+)
+const Fila = ({ onClick, titulo, sub, subColor, monto, montoColor, apagado }) => (
+  <div onClick={onClick} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 12, alignItems: 'center', padding: '12px 0', borderBottom: `1px solid ${T.divisor}`, cursor: onClick ? 'pointer' : 'default' }}>
+    <div style={{ minWidth: 0 }}><div style={{ fontSize: 14, fontWeight: 700, color: apagado ? T.gris : T.tinta, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{titulo}</div>{sub && <div style={{ fontSize: 12, color: subColor || T.gris, fontWeight: subColor ? 700 : 500, marginTop: 2 }}>{sub}</div>}</div>
+    <div style={{ fontSize: 15, fontWeight: 800, color: montoColor || (apagado ? T.gris : T.tinta), fontVariantNumeric: 'tabular-nums' }}>{monto}</div>
+  </div>
+)
+const FilaEspacio = ({ onClick, icono, oscuro, titulo, sub }) => (
+  <div onClick={onClick} style={{ display: 'grid', gridTemplateColumns: '44px minmax(0,1fr) auto', gap: 12, alignItems: 'center', background: T.superficie, borderRadius: 16, padding: '12px 14px', cursor: onClick ? 'pointer' : 'default' }}>
+    <div style={{ width: 44, height: 44, borderRadius: 12, background: oscuro ? T.tinta : T.morado, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name={icono} size={22} sw={2} /></div>
+    <div style={{ minWidth: 0 }}><div style={{ fontSize: 15, fontWeight: 700, color: T.tinta, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{titulo}</div><div style={{ fontSize: 12, color: T.gris, marginTop: 2 }}>{sub}</div></div>
+    {onClick && <Icon name="chevron-right" size={18} sw={2.2} style={{ color: T.gris }} />}
+  </div>
+)
 
 export default function Dashboard({ goTo }) {
-  const { db, all, espacioDe, duenoCuenta, nombreMiembro, saldoCuenta } = useData(); const ix = useIndices(); const { espacio, esPersonal, personal, userId, compartidos, miembros } = useAuth()
+  const { db, all, duenoCuenta, nombreMiembro, saldoCuenta } = useData(); const ix = useIndices(); const { espacio, esPersonal, personal, userId, compartidos, miembros, cambiarEspacio } = useAuth()
   const periodo = primeroDelMes()
   const pce = presupuestoConEjecucion(db, periodo)
   const totalP = pce.reduce((a, p) => a + p.monto, 0), totalE = pce.reduce((a, p) => a + p.ejecutado, 0)
-  const mes = today().slice(0, 7)
+  const mes = today().slice(0, 7); const mesNombre = MES_LARGO(new Date())
   const movMes = db.movimientos.filter(m => m.fecha.startsWith(mes))
   const ing = movMes.filter(m => m.tipo === 'Ingreso').reduce((a, m) => a + +m.monto, 0)
   const sal = movMes.filter(m => m.tipo === 'Salida').reduce((a, m) => a + +m.monto, 0)
@@ -21,7 +41,8 @@ export default function Dashboard({ goTo }) {
   const planAportes = esPersonal ? aportesPlanificados(all, periodo, userId, personal?.id) : {}
   const porMiembro = !esPersonal ? aportesPorMiembro(all, espacio.id, mes, duenoCuenta) : {}
   const porMiembroTotal = !esPersonal ? aportesPorMiembro(all, espacio.id, null, duenoCuenta) : {}
-  const efectivoTotal = db.cuentasPropias.filter(c => c.tipo !== TC).reduce((a, c) => a + saldoCuenta(c), 0)
+  const cuentasCaja = db.cuentasPropias.filter(c => c.tipo !== TC)
+  const disponible = cuentasCaja.reduce((a, c) => a + saldoCuenta(c), 0)
   const deuda = deudaTotal(db)
   const t = today(), t7 = addDays(t, 7)
   const proxP = pce.filter(p => !['Pagado', 'Cancelado'].includes(p.estado) && p.fecha_tentativa >= t && p.fecha_tentativa <= t7).sort((a, b) => a.fecha_tentativa.localeCompare(b.fecha_tentativa))
@@ -32,58 +53,68 @@ export default function Dashboard({ goTo }) {
   const byCat = {}; movMes.filter(m => m.tipo === 'Salida').forEach(m => { const n = ix.cat[m.categoria_id]?.nombre || 'Sin categoría'; byCat[n] = (byCat[n] || 0) + +m.monto })
   const topCat = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 5)
   const ingresosPend = db.programado.filter(p => p.flujo === 'ingreso' && p.estado === 'Pendiente' && p.vencimiento.startsWith(mes)).reduce((a, p) => a + +p.monto, 0)
+  const nPend = proxP.length + proxProg.length
+  const estadoVenc = d => d < 0 ? [`Vencido hace ${-d} día${-d === 1 ? '' : 's'}`, T.rojo] : d === 0 ? ['Vence hoy', T.ambar] : d <= 2 ? [`Vence en ${d} día${d === 1 ? '' : 's'}`, T.ambar] : [null, null]
+  const pill = (primario, onClick, children) => <button onClick={onClick} style={{ flex: 1, height: 44, borderRadius: 22, border: primario ? 'none' : '1.5px solid rgba(255,255,255,0.55)', background: primario ? '#fff' : 'transparent', color: primario ? T.morado : '#fff', fontSize: 14, fontWeight: primario ? 800 : 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>{children}</button>
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <Kpi icon="list" value={fmtCOP(totalP)} sub="Este mes" label="Presupuestado" grad="linear-gradient(135deg,#7c3aed,#6d28d9)" />
-        <Kpi icon="list-check" value={fmtCOP(totalE)} sub={`${totalP > 0 ? Math.round(totalE / totalP * 100) : 0}% del plan`} label="Ejecutado" grad="linear-gradient(135deg,#0891b2,#0e7490)" />
-        <Kpi icon="dollar" value={fmtCOP(ing + totRecibidos - sal - totAportes)} sub={esPersonal ? `Ing ${fmtCOP(ing + totRecibidos)} · aportes ${fmtCOP(totAportes)}` : `Ing ${fmtCOP(ing)}${ingresosPend ? ` · por cobrar ${fmtCOP(ingresosPend)}` : ''}`} label="Flujo neto del mes" grad="linear-gradient(135deg,#059669,#047857)" />
-        <Kpi icon="card" value={fmtCOP(deuda.total)} sub={`Créditos ${fmtCOP(deuda.cred)} · TC ${fmtCOP(deuda.tcs)}`} label="Deuda pendiente" grad="linear-gradient(135deg,#dc2626,#b91c1c)" />
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {/* Hero: continúa la banda morada de la cabecera */}
+      <div style={{ background: T.morado, color: '#fff', padding: '26px 20px 28px' }}>
+        <div style={{ fontSize: 13, fontWeight: 600, opacity: 0.85 }}>{cuentasCaja.length ? 'Disponible' : esPersonal ? 'Salió en ' + mesNombre : 'Gastado en ' + mesNombre}</div>
+        <div style={{ fontSize: 44, fontWeight: 900, letterSpacing: '-2px', lineHeight: 1.05, marginTop: 2, fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }}>{fmtCOP(cuentasCaja.length ? disponible : sal)}</div>
+        {deuda.total > 0 && <div style={{ fontSize: 12, opacity: 0.8, marginTop: 6 }}>Deuda pendiente {fmtCOP(deuda.total)}</div>}
+        <div style={{ marginTop: 20, display: 'flex', gap: 10 }}>
+          {pill(true, () => goTo('movimientos', { nuevo: true }), <><Icon name="plus" size={16} sw={3} />Anotar gasto</>)}
+          {esPersonal ? pill(false, () => goTo('movimientos', { filtro: 'Aportes' }), 'Mis aportes') : pill(false, () => goTo('presupuesto'), 'Presupuesto')}
+        </div>
       </div>
-      {(esPersonal ? db.cuentasPropias.some(c => c.tipo !== TC) : db.cuentasPropias.some(c => c.tipo !== TC)) && <Card>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}><IcoText name="landmark">{esPersonal ? 'Mis cuentas' : `Cuentas de ${espacio.nombre}`} · {fmtCOP(efectivoTotal)}</IcoText></div>
-        {db.cuentasPropias.filter(c => c.tipo !== TC).map(c => <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '5px 0', borderBottom: '1px solid #f9fafb' }}><span>{c.nombre} <span style={{ color: '#9ca3af', fontSize: 10 }}>{c.tipo}</span></span><b style={{ color: saldoCuenta(c) < 0 ? '#dc2626' : '#111' }}>{fmtCOP(saldoCuenta(c))}</b></div>)}
-        <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 6 }}>Saldo calculado con los movimientos registrados en la app.</div>
-      </Card>}
-      {esPersonal && compartidos.length > 0 && <Card>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}><IcoText name="arrow-right">Mis espacios compartidos · este mes</IcoText></div>
-        {compartidos.map(e => { const a = aportesMes[e.id] || { aportes: 0, recibidos: 0 }; const plan = planAportes[e.id] || 0; return <div key={e.id} style={{ padding: '8px 0', borderBottom: '1px solid #f9fafb' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}><b>{e.nombre}</b><span style={{ color: '#7c3aed', fontWeight: 700 }}>aporté {fmtCOP(a.aportes)}</span></div>
-          <div style={{ fontSize: 10, color: '#6b7280' }}>{plan ? `planificado ${fmtCOP(plan)} · ` : ''}{a.recibidos ? `recibí ${fmtCOP(a.recibidos)} · ` : ''}{a.ingresos ? `me pagó ${fmtCOP(a.ingresos)} · ` : ''}neto {fmtCOP(a.aportes - a.recibidos - (a.ingresos || 0))}</div>
-        </div> })}
-      </Card>}
-      {!esPersonal && Object.keys(porMiembroTotal).length > 0 && <Card>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}><IcoText name="user">Aportes por miembro</IcoText></div>
-        {miembros.map(m => { const a = porMiembro[m.user_id] || { aportes: 0, recibidos: 0 }; const t = porMiembroTotal[m.user_id] || { aportes: 0, recibidos: 0 }; return <div key={m.user_id} style={{ padding: '8px 0', borderBottom: '1px solid #f9fafb' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}><b>{m.nombre}</b><span style={{ color: '#7c3aed', fontWeight: 700 }}>este mes {fmtCOP(a.aportes - a.recibidos)}</span></div>
-          <div style={{ fontSize: 10, color: '#6b7280' }}>puso {fmtCOP(a.aportes)}{a.recibidos ? ` · recibió ${fmtCOP(a.recibidos)}` : ''} · acumulado neto {fmtCOP(t.aportes - t.recibidos)}</div>
-        </div> })}
-        <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 6 }}>Pagos hechos con cuentas personales de cada miembro. Lo pagado con cuentas propias del espacio no cuenta como aporte.</div>
-      </Card>}
-      {tcs.length > 0 && <Card>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 10 }}><IcoText name="card">Próximas facturas de tarjeta</IcoText></div>
-        {tcs.map(r => (<div key={r.cuenta.id} onClick={() => goTo('deudas')} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #f9fafb', cursor: 'pointer' }}>
-          <div><div style={{ fontWeight: 600, fontSize: 12 }}>{r.cuenta.nombre}</div><div style={{ fontSize: 10, color: '#6b7280' }}>{r.activos.length} compra{r.activos.length !== 1 ? 's' : ''} · vence {fmtDate(r.proximaFecha)}</div></div>
-          <div style={{ fontWeight: 800, fontSize: 13, color: '#dc2626' }}>{fmtCOP(r.proximaFactura)}</div>
-        </div>))}
-      </Card>}
-      {byGrupo.length > 0 && <Card><div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 12 }}>Plan vs ejecución</div><BarChartCJ labels={byGrupo.map(x => x.name)} datasets={[{ label: 'Presupuestado', data: byGrupo.map(x => x.p), backgroundColor: '#8b5cf6', borderRadius: 4 }, { label: 'Ejecutado', data: byGrupo.map(x => x.e), backgroundColor: '#06b6d4', borderRadius: 4 }]} height={180} /></Card>}
-      {topCat.length > 0 && <Card><div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 12 }}>Gastos del mes por categoría</div><PieChartCJ labels={topCat.map(x => x[0])} data={topCat.map(x => x[1])} height={200} /></Card>}
-      <Card>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 12 }}><IcoText name="clock">Próximos 7 días</IcoText></div>
-        {proxP.length === 0 && proxProg.length === 0 && <div style={{ color: '#9ca3af', fontSize: 12 }}>Nada pendiente esta semana.</div>}
-        {proxProg.map(p => { const d = daysLeft(p.vencimiento); const ing = p.flujo === 'ingreso'; return (
-          <div key={p.id} onClick={() => goTo('programado')} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #f9fafb', cursor: 'pointer' }}>
-            <div><div style={{ fontWeight: 600, fontSize: 12, color: '#111' }}><IcoText name={PICO[p.tipo] || 'pin'} size={12} gap={5}>{p.nombre}</IcoText></div><div style={{ fontSize: 10, color: '#6b7280' }}>{ing ? 'Cobrar' : 'Pagar'} · {fmtDate(p.vencimiento)}</div></div>
-            <div style={{ textAlign: 'right' }}><div style={{ fontWeight: 700, fontSize: 12, color: ing ? '#059669' : '#111' }}>{ing ? '+' : ''}{fmtCOP(p.monto)}</div><span style={{ background: d < 0 ? '#fee2e2' : d <= 2 ? '#fef3c7' : '#f1f5f9', color: d < 0 ? '#991b1b' : d <= 2 ? '#92400e' : '#64748b', padding: '2px 6px', borderRadius: 8, fontSize: 10, fontWeight: 700 }}>{d < 0 ? `Vencido ${-d}d` : d === 0 ? 'Hoy' : `${d}d`}</span></div>
-          </div>) })}
-        {proxP.map(p => (
-          <div key={p.id} onClick={() => goTo('presupuesto')} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #f9fafb', cursor: 'pointer' }}>
-            <div><div style={{ fontWeight: 600, fontSize: 12, color: '#111' }}><IcoText name="list" size={12} gap={5}>{p.concepto}</IcoText></div><div style={{ fontSize: 10, color: '#6b7280' }}>{p.pagador_id && !esPersonal ? nombreMiembro(p.pagador_id) + ' · ' : ''}{fmtDate(p.fecha_tentativa)}</div></div>
-            <div style={{ textAlign: 'right' }}><div style={{ fontWeight: 700, fontSize: 12 }}>{fmtCOP(p.monto)}</div><Badge val={p.estado} map={ECLS} /></div>
-          </div>))}
-      </Card>
+
+      <div style={{ padding: '22px 20px 0', display: 'flex', gap: 24 }}>
+        <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12, fontWeight: 600, color: T.gris }}>Entró en {mesNombre}</div><div style={{ fontSize: 20, fontWeight: 800, color: T.verde, marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>+ {fmtCOP(ing + totRecibidos).replace('$', '').trim()}</div>{!esPersonal && ingresosPend > 0 && <div style={{ fontSize: 11, color: T.gris, marginTop: 2 }}>por cobrar {fmtCOP(ingresosPend)}</div>}</div>
+        <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12, fontWeight: 600, color: T.gris }}>Salió en {mesNombre}</div><div style={{ fontSize: 20, fontWeight: 800, color: T.tinta, marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>− {fmtCOP(sal + totAportes).replace('$', '').trim()}</div>{esPersonal && totAportes > 0 && <div style={{ fontSize: 11, color: T.gris, marginTop: 2 }}>incluye aportes {fmtCOP(totAportes)}</div>}</div>
+      </div>
+
+      {totalP > 0 && <Seccion titulo="Presupuesto del mes" extra={`${Math.round(totalE / totalP * 100)}% ejecutado`}>
+        <div style={{ marginTop: 10, height: 8, borderRadius: 4, background: T.superficie, overflow: 'hidden' }}><div style={{ width: `${Math.min(100, totalE / totalP * 100)}%`, height: '100%', background: totalE > totalP ? T.rojo : T.morado }} /></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 12, color: T.gris }}><span>Ejecutado <b style={{ color: T.tinta }}>{fmtCOP(totalE)}</b></span><span>de <b style={{ color: T.tinta }}>{fmtCOP(totalP)}</b></span></div>
+      </Seccion>}
+
+      {cuentasCaja.length > 0 && <Seccion titulo={esPersonal ? 'Mis cuentas' : `Cuentas de ${espacio.nombre}`}>
+        <div style={{ marginTop: 6 }}>{cuentasCaja.map(c => <Fila key={c.id} titulo={c.nombre} sub={c.tipo} monto={fmtCOP(saldoCuenta(c))} montoColor={saldoCuenta(c) < 0 ? T.rojo : undefined} />)}</div>
+        <div style={{ fontSize: 11, color: T.grisClaro, marginTop: 8 }}>Saldo calculado con lo registrado en la app.</div>
+      </Seccion>}
+
+      {esPersonal && compartidos.length > 0 && <Seccion titulo="Mis espacios">
+        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {compartidos.map(e => { const a = aportesMes[e.id] || { aportes: 0, recibidos: 0, ingresos: 0 }; const plan = planAportes[e.id] || 0
+            const partes = []
+            if (a.aportes || plan) partes.push(`Aporté ${fmtCOP(a.aportes)}${plan ? ` de ${fmtCOP(plan)} planificados` : ''}`)
+            if (a.ingresos) partes.push(`Me pagó ${fmtCOP(a.ingresos)}`)
+            if (a.recibidos) partes.push(`Recibí ${fmtCOP(a.recibidos)}`)
+            return <FilaEspacio key={e.id} onClick={() => cambiarEspacio(e.id)} icono={TIPO_ICON[e.tipo]} oscuro={e.tipo === 'empresa'} titulo={e.nombre} sub={partes.join(' · ') || `Sin movimientos en ${mesNombre}`} /> })}
+        </div>
+      </Seccion>}
+
+      {!esPersonal && Object.keys(porMiembroTotal).length > 0 && <Seccion titulo="Aportes por miembro" extra={mesNombre}>
+        <div style={{ marginTop: 6 }}>{miembros.map(m => { const a = porMiembro[m.user_id] || { aportes: 0, recibidos: 0 }; const tt = porMiembroTotal[m.user_id] || { aportes: 0, recibidos: 0 }; return <Fila key={m.user_id} titulo={m.nombre} sub={`${a.recibidos ? `recibió ${fmtCOP(a.recibidos)} · ` : ''}acumulado ${fmtCOP(tt.aportes - tt.recibidos)}`} monto={fmtCOP(a.aportes - a.recibidos)} montoColor={T.morado} /> })}</div>
+        <div style={{ fontSize: 11, color: T.grisClaro, marginTop: 8 }}>Cuenta lo pagado con cuentas personales de cada miembro. Lo pagado con cuentas del espacio no es aporte.</div>
+      </Seccion>}
+
+      {tcs.length > 0 && <Seccion titulo="Tarjetas" extra={`${tcs.length} factura${tcs.length !== 1 ? 's' : ''}`}>
+        <div style={{ marginTop: 6 }}>{tcs.map(r => <Fila key={r.cuenta.id} onClick={() => goTo('deudas')} titulo={r.cuenta.nombre} sub={`${r.activos.length} compra${r.activos.length !== 1 ? 's' : ''} · vence ${fmtDate(r.proximaFecha)}`} monto={fmtCOP(r.proximaFactura)} />)}</div>
+      </Seccion>}
+
+      <Seccion titulo="Esta semana" extra={nPend ? `${nPend} pago${nPend !== 1 ? 's' : ''}` : null}>
+        <div style={{ marginTop: 6 }}>
+          {nPend === 0 && <div style={{ color: T.gris, fontSize: 13, padding: '14px 0' }}>Nada pendiente en los próximos 7 días.</div>}
+          {proxProg.map(p => { const d = daysLeft(p.vencimiento); const esIng = p.flujo === 'ingreso'; const [est, col] = estadoVenc(d); return <Fila key={p.id} onClick={() => goTo('programado')} titulo={p.nombre} sub={est || `${esIng ? 'Cobrar' : 'Pagar'} · ${fmtDate(p.vencimiento)}`} subColor={col} monto={(esIng ? '+ ' : '') + fmtCOP(p.monto)} montoColor={esIng ? T.verde : undefined} /> })}
+          {proxP.map(p => <Fila key={p.id} onClick={() => goTo('presupuesto')} titulo={p.concepto} sub={`${p.pagador_id && !esPersonal ? nombreMiembro(p.pagador_id) + ' · ' : ''}${p.estado === 'Programado' ? 'Programado · ' : ''}${fmtDate(p.fecha_tentativa)}`} monto={fmtCOP(p.monto)} />)}
+        </div>
+      </Seccion>
+
+      {byGrupo.length > 0 && <Seccion titulo="Plan vs ejecución"><div style={{ marginTop: 12 }}><BarChartCJ labels={byGrupo.map(x => x.name)} datasets={[{ label: 'Presupuestado', data: byGrupo.map(x => x.p), backgroundColor: '#D9D2EA', borderRadius: 4 }, { label: 'Ejecutado', data: byGrupo.map(x => x.e), backgroundColor: T.morado, borderRadius: 4 }]} height={180} /></div></Seccion>}
+      {topCat.length > 0 && <Seccion titulo={`Gastos de ${mesNombre} por categoría`} style={{ paddingBottom: 8 }}><div style={{ marginTop: 12 }}><PieChartCJ labels={topCat.map(x => x[0])} data={topCat.map(x => x[1])} height={200} /></div></Seccion>}
     </div>
   )
 }

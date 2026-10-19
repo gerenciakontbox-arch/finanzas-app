@@ -4,6 +4,8 @@ import { fmtCOP } from './util'
 
 /* ── Iconos monocromáticos (trazo) ── */
 export const ICONS = {
+  dots:'<circle cx="5" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="19" cy="12" r="1.4" fill="currentColor"/>',
+  'chevron-right':'<path d="M9 6l6 6-6 6"/>',
   home:'<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   list:'<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2M12 11h4M12 16h4M8 11h.01M8 16h.01"/>',
   "list-check":'<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2M9 14l2 2 4-4"/>',
@@ -53,39 +55,41 @@ export const Icon = ({ name, size = 16, sw = 1.75, style }) => (
 )
 export const IcoText = ({ name, children, size = 13, gap = 6 }) => (<span style={{ display: 'inline-flex', alignItems: 'center', gap }}><Icon name={name} size={size} /><span>{children}</span></span>)
 
+/* ── Tokens (dirección B · flat) ── */
+export const T = { morado: '#4B1D9E', moradoOscuro: '#36146F', tinta: '#1B1B1F', gris: '#6E6E73', grisClaro: '#9A9AA0', superficie: '#F3F1F8', divisor: '#EBE9F1', verde: '#138A5B', verdeFondo: '#E7F5EE', rojo: '#B42318', rojoFondo: '#FBEAE7', ambar: '#9A5B00', ambarFondo: '#FBF0DA', blanco: '#FFFFFF' }
+
 /* ── Primitivas ── */
-export const inp = { width: '100%', border: '1px solid #e5e7eb', borderRadius: 10, padding: '9px 12px', fontSize: 14, outline: 'none', boxSizing: 'border-box', background: '#fff' }
+export const inp = { width: '100%', border: '1.5px solid transparent', borderRadius: 12, padding: '11px 12px', fontSize: 15, outline: 'none', boxSizing: 'border-box', background: '#F3F1F8', color: '#1B1B1F', fontFamily: 'inherit' }
 export const sel = { ...inp }
-export const PBtn = ({ active, onClick, children }) => (<button onClick={onClick} style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, border: '1px solid', cursor: 'pointer', background: active ? '#7c3aed' : 'transparent', color: active ? '#fff' : '#6b7280', borderColor: active ? '#7c3aed' : '#d1d5db' }}>{children}</button>)
-export const Badge = ({ val, map }) => { const [bg, cl] = ((map || {})[val] || '#f1f5f9|#64748b').split('|'); return <span style={{ background: bg, color: cl, padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{val}</span> }
+export const PBtn = ({ active, onClick, children }) => (<button onClick={onClick} style={{ padding: '7px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, border: '1.5px solid', cursor: 'pointer', fontFamily: 'inherit', background: active ? '#4B1D9E' : '#FFFFFF', color: active ? '#fff' : '#1B1B1F', borderColor: active ? '#4B1D9E' : '#EBE9F1' }}>{children}</button>)
+export const Badge = ({ val, map }) => { const [, cl] = ((map || {})[val] || '#F3F1F8|#6E6E73').split('|'); return <span style={{ color: cl, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{val}</span> }
 export const Kpi = ({ icon, value, sub, label, color, grad }) => (
-  <div style={{ background: grad || '#fff', borderRadius: 16, padding: '14px 12px', border: grad ? 'none' : '1px solid #f0f0f0', textAlign: 'center', color: grad ? '#fff' : 'inherit' }}>
-    {icon && <div style={{ display: 'flex', justifyContent: 'center', color: grad ? 'rgba(255,255,255,0.9)' : '#6b7280', marginBottom: 2 }}><Icon name={icon} size={20} sw={1.6} /></div>}
-    <div style={{ fontWeight: 800, fontSize: 15, color: grad ? '#fff' : (color || '#111'), marginTop: icon ? 3 : 0, lineHeight: 1.2 }}>{value}</div>
-    {sub && <div style={{ fontSize: 9, opacity: grad ? 0.75 : 1, color: grad ? '#fff' : '#9ca3af', marginTop: 2 }}>{sub}</div>}
-    <div style={{ fontSize: 10, fontWeight: 600, marginTop: 3, opacity: grad ? 0.9 : 1, color: grad ? '#fff' : '#6b7280' }}>{label}</div>
+  <div style={{ padding: '4px 2px', minWidth: 0 }}>
+    <div style={{ fontSize: 12, fontWeight: 600, color: '#6E6E73', display: 'flex', alignItems: 'center', gap: 5 }}>{icon && <Icon name={icon} size={13} sw={2} />}{label}</div>
+    <div style={{ fontWeight: 800, fontSize: 18, color: color || '#1B1B1F', marginTop: 2, lineHeight: 1.15, fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }}>{value}</div>
+    {sub && <div style={{ fontSize: 11, color: '#6E6E73', marginTop: 2 }}>{sub}</div>}
   </div>
 )
-export const Field = ({ label, full, children }) => (<div style={{ gridColumn: full ? '1/-1' : 'auto' }}><label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>{label}</label>{children}</div>)
+export const Field = ({ label, full, children }) => (<div style={{ gridColumn: full ? '1/-1' : 'auto', minWidth: 0 }}><label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#6E6E73', marginBottom: 5 }}>{label}</label>{children}</div>)
 export function Modal({ title, onClose, children }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 999, display: 'flex', alignItems: 'flex-end' }}>
-      <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
-          <span style={{ fontWeight: 700, fontSize: 15, color: '#111' }}>{title}</span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 26, cursor: 'pointer', color: '#9ca3af', lineHeight: 1 }}>×</button>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(27,27,31,0.5)', zIndex: 999, display: 'flex', alignItems: 'flex-end' }}>
+      <div style={{ background: '#fff', borderRadius: '24px 24px 0 0', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px 10px', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+          <span style={{ fontWeight: 800, fontSize: 17, color: '#1B1B1F', letterSpacing: '-0.2px' }}>{title}</span>
+          <button onClick={onClose} aria-label="Cerrar" style={{ width: 32, height: 32, borderRadius: 16, background: '#F3F1F8', border: 'none', cursor: 'pointer', color: '#1B1B1F', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="x" size={16} sw={2.2} /></button>
         </div>
-        <div style={{ padding: '16px 18px 36px' }}>{children}</div>
+        <div style={{ padding: '10px 20px 36px' }}>{children}</div>
       </div>
     </div>
   )
 }
-export const SaveBtn = ({ onClick, disabled, children }) => (<button onClick={onClick} disabled={disabled} style={{ flex: 2, padding: '11px', background: disabled ? '#c4b5fd' : '#7c3aed', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer', fontSize: 14 }}>{children}</button>)
-export const CancelBtn = ({ onClick }) => (<button onClick={onClick} style={{ flex: 1, padding: '11px', border: '1px solid #d1d5db', borderRadius: 10, background: '#fff', cursor: 'pointer', fontSize: 14 }}>Cancelar</button>)
-export const SmallBtn = ({ onClick, bg, color, children }) => (<button onClick={onClick} style={{ fontSize: 11, background: bg, color, border: 'none', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 5 }}>{children}</button>)
-export const PrimaryBtn = ({ onClick, children, style, title }) => (<button onClick={onClick} title={title} style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 16px', fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, ...style }}>{children}</button>)
-export const Card = ({ children, style }) => (<div style={{ background: '#fff', borderRadius: 16, padding: 16, border: '1px solid #f0f0f0', ...style }}>{children}</div>)
-export const Aviso = ({ tipo = 'info', children }) => { const c = { info: ['#f5f3ff', '#4c1d95', 'info'], warn: ['#fef3c7', '#92400e', 'alert'], ok: ['#f0fdf4', '#065f46', 'check'], err: ['#fee2e2', '#991b1b', 'alert'] }[tipo]; return <div style={{ background: c[0], borderRadius: 12, padding: '10px 14px', fontSize: 12, color: c[1], display: 'flex', gap: 8, alignItems: 'flex-start', lineHeight: 1.5 }}><Icon name={c[2]} size={15} style={{ marginTop: 1 }} /><span>{children}</span></div> }
+export const SaveBtn = ({ onClick, disabled, children }) => (<button onClick={onClick} disabled={disabled} style={{ flex: 2, height: 46, padding: '0 16px', background: disabled ? '#D9D2EA' : '#4B1D9E', color: '#fff', border: 'none', borderRadius: 23, fontWeight: 800, cursor: disabled ? 'not-allowed' : 'pointer', fontSize: 14, fontFamily: 'inherit' }}>{children}</button>)
+export const CancelBtn = ({ onClick }) => (<button onClick={onClick} style={{ flex: 1, height: 46, padding: '0 16px', border: '1.5px solid #EBE9F1', borderRadius: 23, background: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, color: '#1B1B1F', fontFamily: 'inherit' }}>Cancelar</button>)
+export const SmallBtn = ({ onClick, bg, color, children }) => (<button onClick={onClick} style={{ fontSize: 12, background: bg, color, border: 'none', borderRadius: 16, padding: '7px 12px', cursor: 'pointer', fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}>{children}</button>)
+export const PrimaryBtn = ({ onClick, children, style, title }) => (<button onClick={onClick} title={title} style={{ background: '#4B1D9E', color: '#fff', border: 'none', borderRadius: 22, height: 40, padding: '0 16px', fontWeight: 800, fontSize: 14, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', ...style }}>{children}</button>)
+export const Card = ({ children, style }) => (<div style={{ background: '#F3F1F8', borderRadius: 16, padding: 16, ...style }}>{children}</div>)
+export const Aviso = ({ tipo = 'info', children }) => { const c = { info: ['#F3F1F8', '#36146F', 'info'], warn: ['#FBF0DA', '#9A5B00', 'alert'], ok: ['#E7F5EE', '#0F6B47', 'check'], err: ['#FBEAE7', '#B42318', 'alert'] }[tipo]; return <div style={{ background: c[0], borderRadius: 12, padding: '10px 14px', fontSize: 12, color: c[1], display: 'flex', gap: 8, alignItems: 'flex-start', lineHeight: 1.5 }}><Icon name={c[2]} size={14} style={{ marginTop: 2 }} /><div style={{ flex: 1 }}>{children}</div></div> }
 export function useForm(init) { const [form, setForm] = useState(init); const sf = (k, v) => setForm(f => ({ ...f, [k]: v })); return [form, sf, setForm] }
 
 /* ── Charts ── */
@@ -96,7 +100,7 @@ export function BarChartCJ({ labels, datasets, height = 180 }) {
     return () => { if (chart.current) chart.current.destroy() } }, [JSON.stringify({ labels, datasets })])
   return <div style={{ position: 'relative', height }}><canvas ref={ref} /></div>
 }
-export const COLORS = ['#8b5cf6', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#ec4899', '#3b82f6', '#84cc16']
+export const COLORS = ['#4B1D9E', '#138A5B', '#9A5B00', '#0F6E8C', '#B42318', '#8E6BC8', '#1B1B1F', '#6E6E73']
 export function PieChartCJ({ labels, data, height = 180 }) {
   const ref = useRef(); const chart = useRef()
   useEffect(() => { if (chart.current) chart.current.destroy()
