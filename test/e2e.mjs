@@ -19,7 +19,7 @@ const fillLabel = async (label, v) => { const el = page.locator(`label:has-text(
 const selectLabel = async (label, v) => { const el = page.locator(`label:has-text("${label}")`).first().locator('xpath=following-sibling::select'); await el.selectOption({ label: v }) }
 
 await page.goto('http://localhost:4177/'); await page.waitForTimeout(400)
-ok('Pantalla de login', /Enviarme el código por correo/.test(await T()))
+ok('Pantalla de login (Akontapp)', /Enviarme el código por correo/.test(await T()) && /Akontapp/.test(await T()))
 await page.fill('input[type=email]', 'andres@test.co'); await click('button', { hasText: 'Enviarme el código' })
 ok('Pide el código del correo', /código numérico/.test(await T()))
 await page.fill('input[inputmode=numeric]', '999999'); await click('button', { hasText: 'Entrar con el código' }); await page.waitForTimeout(200)
@@ -32,7 +32,8 @@ ok('Dashboard del hogar', /Casa Quijano/.test(await T()) && /Presupuestado/.test
 // Config → cuentas: agregar banco y tarjeta
 await tab('Config'); await click('button', { hasText: 'Cuentas' })
 await fillLabel('Nombre', 'Bancolombia Andrés'); await click('button', { hasText: 'Agregar cuenta' })
-await fillLabel('Nombre', 'Visa Bancolombia'); await selectLabel('Tipo', 'Tarjeta crédito'); await fillLabel('Cupo (COP)', 5000000); await fillLabel('Tasa mensual (%)', 2.8); await fillLabel('Día de corte', 15); await click('button', { hasText: 'Agregar cuenta' })
+await fillLabel('Nombre', 'Visa Bancolombia'); await selectLabel('Tipo', 'Tarjeta crédito')
+{ const cupo = page.locator('label:has-text("Cupo (COP)")').first().locator('xpath=following-sibling::*[1]'); await cupo.click(); await page.keyboard.type('5000000', { delay: 30 }); const v = await cupo.inputValue(); const foco = await cupo.evaluate(el => document.activeElement === el); ok('R9: el campo Cupo conserva el foco al teclear', v === '5000000' && foco) } await fillLabel('Tasa mensual (%)', 2.8); await fillLabel('Día de corte', 15); await click('button', { hasText: 'Agregar cuenta' })
 ok('Cuentas creadas (banco + TC)', /Bancolombia Andrés/.test(await T()) && /Visa Bancolombia/.test(await T()) && /TC/.test(await T()))
 // Invitación
 await click('button', { hasText: 'Hogar' }); const codigo = await page.evaluate(() => window.__sb._T.hogares[0].codigo_invitacion)
@@ -60,7 +61,8 @@ let st = await page.evaluate(() => ({ m: window.__sb._T.movimientos.length, cp: 
 ok('Factura → 1 movimiento + 1 cuota pagada', st.m === mBefore + 1 && st.cp === 1 && st.ult.origen === 'tarjeta' && st.ult.desglose.cuota_manejo === 25000)
 // Crédito
 await click('button', { hasText: 'Nuevo' }); await fillLabel('Nombre', 'Crédito vehicular'); await fillLabel('Capital inicial', 15000000); await fillLabel('Tasa mensual (%)', 1.2); await fillLabel('Total cuotas', 36); await click('button', { hasText: 'Guardar' })
-ok('Crédito creado', /Crédito vehicular/.test(await T()))
+await page.screenshot({ path: 'test/shot-deudas.png', fullPage: true })
+ok('Crédito creado en formato tarjeta', /Crédito vehicular/.test(await T()) && /saldo capital/i.test(await T()) && /próxima cuota/i.test(await T()) && /Pagar cuota 1/.test(await T()))
 await click('div:has-text("Crédito vehicular") >> nth=-1'); await page.waitForTimeout(150)
 await page.locator('button', { hasText: /^Pagar$/ }).first().click(); await page.waitForTimeout(200)
 st = await page.evaluate(() => ({ cp: window.__sb._T.cuotas_pagadas.filter(c => c.deuda_id).length, m: window.__sb._T.movimientos.filter(m => m.origen === 'credito').length }))
@@ -102,6 +104,20 @@ await page.setInputFiles('input[type="file"]', { name: 'ing.csv', mimeType: 'tex
 await click('button', { hasText: 'Importar 1' }); await page.waitForTimeout(400)
 st = await page.evaluate(() => window.__sb._T.programado.find(x => x.nombre === 'Arriendo local'))
 ok('Ingreso importado con alias de columnas y coma decimal/miles', st && st.flujo === 'ingreso' && +st.monto === 1800000 && st.vencimiento === '2026-11-05' && st.tipo === 'Honorarios' && /Cobrar/.test(await T()))
+
+// Activos: importación CSV + ordenamiento
+await tab('Activos'); await click('button[title="Importar CSV"]'); ok('Modal importar activos', /Importar activos/.test(await T()))
+await page.setInputFiles('input[type="file"]', { name: 'act.csv', mimeType: 'text/csv', buffer: Buffer.from('﻿nombre;tipo;entidad;valor;fecha compra;placa\r\nMazda 3;carro;Andrés;62.000.000;20/01/2022;ABC123\r\nApartamento;Inmueble;Familia;380.000.000;15/06/2019;\r\nBicicleta;;;1.200.000;;\r\n', 'utf8') }); await page.waitForTimeout(300)
+ok('Vista previa activos: 3 válidos, tipo "carro" → Vehículo', /Importar 3/.test(await T()) && /Vehículo/.test(await T()))
+await click('button', { hasText: 'Importar 3' }); await page.waitForTimeout(400)
+st = await page.evaluate(() => window.__sb._T.activos.map(a => [a.nombre, a.tipo, +a.valor_estimado, a.fecha_adquisicion, a.identificador]))
+ok('Activos importados con tipo, valor, fecha e identificador', st.length === 3 && st.some(a => a[0] === 'Mazda 3' && a[1] === 'Vehículo' && a[2] === 62000000 && a[3] === '2022-01-20' && a[4] === 'ABC123') && st.some(a => a[0] === 'Bicicleta' && a[1] === 'Otro'))
+const nombres = async () => (await page.locator('div[style*="text-overflow: ellipsis"]').allInnerTexts()).filter(t => ['Mazda 3', 'Apartamento', 'Bicicleta'].includes(t))
+ok('Orden alfabético por defecto', (await nombres()).join() === 'Apartamento,Bicicleta,Mazda 3')
+await page.selectOption('select[aria-label="Ordenar por"]', 'valor'); await page.waitForTimeout(100); ok('Orden por valor ascendente', (await nombres()).join() === 'Bicicleta,Mazda 3,Apartamento')
+await page.click('button[title="Ascendente"]'); await page.waitForTimeout(100); ok('Orden por valor descendente', (await nombres()).join() === 'Apartamento,Mazda 3,Bicicleta')
+await page.selectOption('select[aria-label="Ordenar por"]', 'fecha'); await page.waitForTimeout(100); await page.screenshot({ path: 'test/shot-activos.png', fullPage: true })
+ok('Orden por fecha de compra (desc): más reciente primero, sin fecha al final', (await nombres()).join() === 'Mazda 3,Apartamento,Bicicleta')
 
 // Dashboard refleja todo
 await tab('Inicio'); const d = await T()

@@ -33,7 +33,7 @@ function Shell() {
       <div className="safe-top" style={{ background: 'linear-gradient(135deg,#7c3aed,#4338ca)', color: '#fff', paddingLeft: 18, paddingRight: 18, paddingBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: '-0.5px', display: 'flex', alignItems: 'center', gap: 8 }}><Icon name="wallet" size={18} />Finanzas Integradas</div>
+            <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: '-0.5px', display: 'flex', alignItems: 'center', gap: 8 }}><Icon name="wallet" size={18} />Akontapp</div>
             <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>{hogar.nombre} · {new Date().toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })}</div>
           </div>
           <div style={{ fontSize: 11, opacity: 0.85, background: 'rgba(255,255,255,0.15)', borderRadius: 20, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 5 }}><Icon name="user" size={12} />{miembroActual?.nombre || '—'}</div>

@@ -28,7 +28,7 @@ function Hogar() {
   const { actualizar } = useData()
   const [nombre, setNombre] = useState(hogar.nombre); const [msg, setMsg] = useState('')
   const copiar = async () => { try { await navigator.clipboard.writeText(hogar.codigo_invitacion); setMsg('Código copiado.') } catch { setMsg(hogar.codigo_invitacion) } }
-  const compartir = async () => { const txt = `Únete a "${hogar.nombre}" en Finanzas Integradas. Entra a ${window.location.origin}, inicia sesión con tu correo y usa el código ${hogar.codigo_invitacion}`; if (navigator.share) { try { await navigator.share({ text: txt }) } catch { } } else copiar() }
+  const compartir = async () => { const txt = `Únete a "${hogar.nombre}" en Akontapp. Entra a ${window.location.origin}, inicia sesión con tu correo y usa el código ${hogar.codigo_invitacion}`; if (navigator.share) { try { await navigator.share({ text: txt }) } catch { } } else copiar() }
   const expulsar = async m => { if (!window.confirm(`¿Quitar a ${m.nombre} del hogar? Lo que registró se conserva.`)) return; await supabase.from('miembros').delete().eq('hogar_id', hogar.id).eq('user_id', m.user_id); await recargar() }
   const renombrar = async () => { if (!nombre.trim()) return; await supabase.from('hogares').update({ nombre: nombre.trim() }).eq('id', hogar.id); await recargar(); setMsg('Nombre actualizado.') }
   return (
@@ -70,6 +70,9 @@ function Entidades() {
   )
 }
 
+// Fuera del componente padre: si se define adentro, React lo recrea en cada tecla y el campo pierde el foco.
+function TCF({ v, set }) { return (<><Field label="Cupo (COP)"><input type="number" inputMode="numeric" value={v.cupo ?? ''} onChange={e => set('cupo', e.target.value)} style={inp} /></Field><Field label="Tasa mensual (%)"><input type="number" inputMode="decimal" step="0.01" value={v.tasa_mensual ?? ''} onChange={e => set('tasa_mensual', e.target.value)} style={inp} /></Field><Field label="Banco"><input value={v.banco || ''} onChange={e => set('banco', e.target.value)} style={inp} /></Field><Field label="Últimos 4"><input value={v.ultimos4 || ''} onChange={e => set('ultimos4', e.target.value)} maxLength={4} style={inp} /></Field><Field label="Día de corte"><input type="number" min={1} max={31} value={v.dia_corte ?? ''} onChange={e => set('dia_corte', e.target.value)} style={inp} /></Field></>) }
+
 function Cuentas() {
   const { db, insertar, actualizar, borrar } = useData()
   const empty = { nombre: '', tipo: 'Bancaria', entidad_id: db.entidades[0]?.id || null, cupo: '', tasa_mensual: '', banco: '', ultimos4: '', dia_corte: '' }
@@ -77,7 +80,6 @@ function Cuentas() {
   const build = f => ({ nombre: f.nombre.trim(), tipo: f.tipo, entidad_id: f.entidad_id || null, cupo: f.tipo === TC ? parseFloat(f.cupo) || null : null, tasa_mensual: f.tipo === TC ? parseFloat(f.tasa_mensual) || 0 : null, banco: f.tipo === TC ? f.banco || null : null, ultimos4: f.tipo === TC && /^\d{4}$/.test(f.ultimos4) ? f.ultimos4 : null, dia_corte: f.tipo === TC ? parseInt(f.dia_corte) || null : null })
   const add = async () => { if (!form.nombre.trim()) return; try { await insertar('cuentas', build(form)); setForm(empty) } catch (e) { alert(e.message) } }
   const save = async () => { try { await actualizar('cuentas', edit.id, build(edit)); setEdit(null) } catch (e) { alert(e.message) } }
-  const TCF = ({ v, set }) => (<><Field label="Cupo (COP)"><input type="number" inputMode="numeric" value={v.cupo ?? ''} onChange={e => set('cupo', e.target.value)} style={inp} /></Field><Field label="Tasa mensual (%)"><input type="number" inputMode="decimal" step="0.01" value={v.tasa_mensual ?? ''} onChange={e => set('tasa_mensual', e.target.value)} style={inp} /></Field><Field label="Banco"><input value={v.banco || ''} onChange={e => set('banco', e.target.value)} style={inp} /></Field><Field label="Últimos 4"><input value={v.ultimos4 || ''} onChange={e => set('ultimos4', e.target.value)} maxLength={4} style={inp} /></Field><Field label="Día de corte"><input type="number" min={1} max={31} value={v.dia_corte ?? ''} onChange={e => set('dia_corte', e.target.value)} style={inp} /></Field></>)
   return (
     <Card>
       <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 10 }}>Agregar cuenta / método de pago</div>

@@ -25,7 +25,7 @@ export function Login() {
   }
   return (
     <div style={wrap}><div style={card}>
-      <div style={title}><Icon name="wallet" size={26} style={{ color: '#7c3aed' }} />Finanzas Integradas</div>
+      <div style={title}><Icon name="wallet" size={26} style={{ color: '#7c3aed' }} />Akontapp</div>
       <div style={{ fontSize: 13, color: '#6b7280', marginTop: 6, marginBottom: 22 }}>Presupuesto, deudas y patrimonio del hogar, en un solo lugar.</div>
       {estado === 'enviado' || estado === 'verificando' ? (<>
         <Aviso tipo="ok">Te enviamos un correo a <b>{email}</b> con un <b>código numérico</b>. Escríbelo aquí para entrar (solo el del correo más reciente; no abras el enlace). Revisa spam si no llega en un minuto.</Aviso>

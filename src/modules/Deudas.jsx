@@ -40,17 +40,24 @@ export default function Deudas({ goTo }) {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}><div style={{ fontWeight: 700, fontSize: 14, color: '#374151' }}>Créditos ({creditos.length})</div><PrimaryBtn onClick={() => { setForm(emptyD); setModal('add') }} style={{ padding: '8px 14px', fontSize: 13 }}><Icon name="plus" size={13} />Nuevo</PrimaryBtn></div>
       {creditos.map(r => { const isOpen = open === r.id; const vT = showAll[r.id]; const rows = vT ? r.am : r.am.slice(Math.max(0, r.pagadas - 1), r.pagadas + 4); return (
-        <div key={r.id} style={{ background: '#fff', borderRadius: 16, border: '1px solid #f0f0f0', overflow: 'hidden' }}>
-          <div onClick={() => setOpen(isOpen ? null : r.id)} style={{ padding: '14px 16px', cursor: 'pointer', background: isOpen ? '#faf5ff' : '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ background: 'linear-gradient(135deg,#dc2626,#b91c1c)', borderRadius: 12, padding: '10px 12px', color: '#fff', flexShrink: 0 }}><Icon name={r.tipo === 'Vehicular' ? 'car' : r.tipo === 'Hipotecario' ? 'home' : 'banknote'} size={18} /></div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.nombre}</div>
-              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{ix.ent[r.entidad_id]?.nombre || '—'} · {r.tasa_mensual}% m.v.{r.activo_id ? ` · ${ix.act[r.activo_id]?.nombre}` : ''}</div>
-              <div style={{ background: '#e5e7eb', borderRadius: 99, height: 5, marginTop: 6 }}><div style={{ height: 5, borderRadius: 99, background: 'linear-gradient(90deg,#7c3aed,#06b6d4)', width: `${r.pct}%` }} /></div>
-              <div style={{ fontSize: 9, color: '#7c3aed', marginTop: 2 }}>{r.pct}% amortizado · {r.pagadas}/{r.total_cuotas} cuotas</div>
+        <div key={r.id} style={{ background: '#fff', borderRadius: 16, border: '1px solid #fecaca', overflow: 'hidden', opacity: r.estado === 'Activo' ? 1 : 0.7 }}>
+          <div onClick={() => setOpen(isOpen ? null : r.id)} style={{ padding: '14px 16px', cursor: 'pointer', background: r.estado === 'Activo' ? 'linear-gradient(135deg,#7f1d1d,#b91c1c)' : 'linear-gradient(135deg,#374151,#6b7280)', color: '#fff' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 10, opacity: 0.75, letterSpacing: '0.1em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name={r.tipo === 'Vehicular' ? 'car' : r.tipo === 'Hipotecario' ? 'home' : 'banknote'} size={12} />Crédito {r.tipo.toLowerCase()}{r.estado !== 'Activo' ? ' · cancelado' : ''}</div>
+                <div style={{ fontWeight: 800, fontSize: 16, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.nombre}</div>
+                <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>{ix.ent[r.entidad_id]?.nombre || '—'} · {r.tasa_mensual}% m.v. · {r.total_cuotas} cuotas{r.activo_id ? ` · ${ix.act[r.activo_id]?.nombre}` : ''}</div>
+              </div>
+              <Icon name={isOpen ? 'chevron-up' : 'chevron-down'} size={20} />
             </div>
-            <div style={{ textAlign: 'right', flexShrink: 0 }}><div style={{ fontWeight: 800, fontSize: 14, color: '#dc2626' }}>{fmtCOP(r.capitalPendiente)}</div><div style={{ fontSize: 10, color: '#9ca3af' }}>{fmtCOP(r.cf)}/mes</div><div style={{ color: '#9ca3af', marginTop: 4 }}><Icon name={isOpen ? 'chevron-up' : 'chevron-down'} size={16} /></div></div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 14 }}>
+              <div><div style={{ fontSize: 9, opacity: 0.75, textTransform: 'uppercase' }}>Saldo capital</div><div style={{ fontWeight: 800, fontSize: 14 }}>{fmtCOP(r.capitalPendiente)}</div></div>
+              <div><div style={{ fontSize: 9, opacity: 0.75, textTransform: 'uppercase' }}>Próxima cuota</div><div style={{ fontWeight: 800, fontSize: 14, color: '#fcd34d' }}>{r.proxima ? fmtCOP(r.proxima.total) : '—'}</div>{r.proxima && <div style={{ fontSize: 9, opacity: 0.8 }}>{r.proxima.fecha < today() ? 'Vencida · ' : ''}{fmtDate(r.proxima.fecha)} · N° {r.proxima.n}</div>}</div>
+              <div><div style={{ fontSize: 9, opacity: 0.75, textTransform: 'uppercase' }}>Cuota fija</div><div style={{ fontWeight: 800, fontSize: 14 }}>{fmtCOP(r.cf)}</div><div style={{ fontSize: 9, opacity: 0.8 }}>{ix.cta[r.cuenta_pago_id]?.nombre || 'sin cuenta'}</div></div>
+            </div>
+            <div style={{ marginTop: 10 }}><div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 99, height: 6 }}><div style={{ height: 6, borderRadius: 99, background: '#86efac', width: `${r.pct}%` }} /></div><div style={{ fontSize: 9, opacity: 0.8, marginTop: 3 }}>{r.pct}% amortizado · {r.pagadas}/{r.total_cuotas} cuotas pagadas · capital pagado {fmtCOP(r.capitalPagado)}</div></div>
           </div>
+          {r.estado === 'Activo' && r.proxima && !isOpen && <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, padding: '8px 12px', background: '#fff' }}><SmallBtn onClick={() => setOpen(r.id)} bg="#f1f5f9" color="#475569">Ver tabla</SmallBtn><SmallBtn onClick={() => { if (window.confirm(`¿Registrar el pago de la cuota ${r.proxima.n} por ${fmtCOP(r.proxima.total)} desde ${ix.cta[r.cuenta_pago_id]?.nombre || 'la cuenta de pago'}?`)) pagarC(r, r.proxima) }} bg="#dc2626" color="#fff"><Icon name="check" size={12} />Pagar cuota {r.proxima.n}</SmallBtn></div>}
           {isOpen && <div style={{ borderTop: '1px solid #f0f0f0' }}>
             <div style={{ padding: '8px 12px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><div style={{ fontWeight: 700, fontSize: 12, color: '#374151' }}>Tabla de amortización</div>
               <div style={{ display: 'flex', gap: 6 }}><SmallBtn onClick={() => setShowAll(p => ({ ...p, [r.id]: !vT }))} bg="#f9fafb" color="#6b7280">{vT ? 'Menos' : 'Todas'}</SmallBtn><SmallBtn onClick={() => { setForm({ ...r, capital_inicial: String(r.capital_inicial), tasa_mensual: String(r.tasa_mensual), total_cuotas: String(r.total_cuotas) }); setModal(r) }} bg="#ede9fe" color="#7c3aed"><Icon name="pencil" size={13} /></SmallBtn><SmallBtn onClick={async () => { if (window.confirm('¿Eliminar este crédito y su historial de cuotas?')) await borrar('deudas', r.id) }} bg="#fee2e2" color="#dc2626"><Icon name="trash" size={13} /></SmallBtn></div></div>

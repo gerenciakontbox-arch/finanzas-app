@@ -1,16 +1,27 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useData, useIndices } from '../lib/data'
-import { Kpi, Card, Icon, IcoText, Modal, Field, inp, sel, SaveBtn, CancelBtn, SmallBtn, PrimaryBtn, useForm } from '../lib/ui'
+import { Kpi, Card, Icon, IcoText, Modal, Field, inp, sel, SaveBtn, CancelBtn, SmallBtn, PrimaryBtn, Aviso, useForm } from '../lib/ui'
 import { fmtCOP, fmtDate, today, daysLeft, TIPOS_ACTIVO } from '../lib/util'
 import { deudaTotal } from '../lib/finanzas'
-import { parseMonto } from '../lib/csv'
+import { parseCSV, parseMonto, parseFecha, matchOpt, toCSV, descargar, leerArchivoTexto, norm } from '../lib/csv'
 
 const AICO = { Inmueble: 'home', Vehículo: 'car', Moto: 'bike', Equipo: 'laptop', Otro: 'package' }
 const PICO = { Impuesto: 'receipt', Seguro: 'shield', Mantenimiento: 'wrench', 'Cuota crédito': 'card', Servicio: 'wifi', Suscripción: 'refresh', Otro: 'pin' }
+const ORDENES = [['nombre', 'Nombre (A–Z)'], ['entidad', 'Entidad'], ['valor', 'Valor'], ['fecha', 'Fecha de compra'], ['tipo', 'Tipo']]
+const ordenar = (list, ix, clave, desc) => {
+  const k = {
+    nombre: a => (a.nombre || '').toLocaleLowerCase('es'), tipo: a => (a.tipo || '').toLocaleLowerCase('es'),
+    entidad: a => ((ix.ent[a.entidad_id]?.nombre || '') + '|' + (a.nombre || '')).toLocaleLowerCase('es'),
+    valor: a => +a.valor_estimado || 0, fecha: a => a.fecha_adquisicion || '',
+  }[clave]
+  const arr = [...list].sort((x, y) => { const a = k(x), b = k(y); return typeof a === 'number' ? a - b : String(a).localeCompare(String(b), 'es') })
+  return desc ? arr.reverse() : arr
+}
 
 export default function Activos() {
   const { db, insertar, actualizar, borrar } = useData(); const ix = useIndices()
-  const [open, setOpen] = useState(null); const [modal, setModal] = useState(null)
+  const [open, setOpen] = useState(null); const [modal, setModal] = useState(null); const [importar, setImportar] = useState(false)
+  const [orden, setOrden] = useState('nombre'); const [desc, setDesc] = useState(false)
   const emptyA = { nombre: '', tipo: 'Inmueble', entidad_id: db.entidades[0]?.id || null, identificador: '', valor_estimado: '', fecha_adquisicion: today(), notas: '' }
   const [form, sf, setForm] = useForm(emptyA)
   const totalP = db.activos.reduce((a, x) => a + +x.valor_estimado, 0); const deuda = deudaTotal(db)
@@ -18,8 +29,17 @@ export default function Activos() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><Kpi icon="landmark" value={fmtCOP(totalP)} label="Patrimonio bruto" color="#059669" /><Kpi icon="gem" value={fmtCOP(totalP - deuda.total)} label="Patrimonio neto" color="#7c3aed" /></div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><div style={{ fontWeight: 700, fontSize: 14, color: '#374151' }}>Activos ({db.activos.length})</div><PrimaryBtn onClick={() => { setForm(emptyA); setModal('add') }} style={{ padding: '8px 14px', fontSize: 13 }}><Icon name="plus" size={13} />Nuevo</PrimaryBtn></div>
-      {db.activos.map(a => {
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: '#374151', flexShrink: 0 }}>Activos ({db.activos.length})</div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
+          <select aria-label="Ordenar por" value={orden} onChange={e => setOrden(e.target.value)} style={{ ...sel, padding: '7px 6px', fontSize: 12, width: 'auto', maxWidth: 130, minWidth: 0 }}>{ORDENES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+          <button onClick={() => setDesc(d => !d)} title={desc ? 'Descendente' : 'Ascendente'} style={{ background: '#fff', color: '#374151', border: '1px solid #d1d5db', borderRadius: 10, padding: '7px 9px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}><Icon name={desc ? 'chevron-down' : 'chevron-up'} size={16} /></button>
+          <button onClick={() => setImportar(true)} title="Importar CSV" style={{ background: '#fff', color: '#7c3aed', border: '1px solid #c4b5fd', borderRadius: 10, padding: '7px 10px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}><Icon name="upload" size={16} /></button>
+          <PrimaryBtn onClick={() => { setForm(emptyA); setModal('add') }} title="Nuevo activo" style={{ padding: '8px 10px' }}><Icon name="plus" size={16} sw={2.2} /></PrimaryBtn>
+        </div>
+      </div>
+      {db.activos.length === 0 && <Card style={{ textAlign: 'center', color: '#9ca3af', fontSize: 13, padding: 30 }}>Registra tus activos: inmuebles, vehículos, equipos. Puedes cargarlos desde un CSV con el botón de subir.</Card>}
+      {ordenar(db.activos, ix, orden, desc).map(a => {
         const isOpen = open === a.id
         const gastos = db.movimientos.filter(m => m.activo_id === a.id && m.tipo === 'Salida').sort((x, y) => y.fecha.localeCompare(x.fecha))
         const prog = db.programado.filter(p => p.activo_id === a.id && p.estado === 'Pendiente').sort((x, y) => x.vencimiento.localeCompare(y.vencimiento))
@@ -56,6 +76,75 @@ export default function Activos() {
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={() => setModal(null)} /><SaveBtn onClick={save}>Guardar</SaveBtn></div>
       </Modal>}
+      {importar && <ImportarActivos onClose={() => setImportar(false)} />}
     </div>
+  )
+}
+
+const ACSV_COLS = ['nombre', 'tipo', 'entidad', 'valor', 'fecha_compra', 'identificador', 'notas']
+
+function ImportarActivos({ onClose }) {
+  const { db, insertar, insertarVarios } = useData()
+  const [parsed, setParsed] = useState(null); const [err, setErr] = useState(''); const [crear, setCrear] = useState(true); const fileRef = useRef()
+  const ent0 = db.entidades[0]?.nombre || 'Familia'
+  const plantilla = () => descargar('plantilla-activos.csv', toCSV([ACSV_COLS, ['Apartamento Ciudad Jardín', 'Inmueble', ent0, '380.000.000', '15/06/2019', 'Matrícula 370-123456', ''], ['Mazda 3', 'Vehículo', ent0, '62.000.000', '20/01/2022', 'ABC123', 'Comprado usado'], ['MacBook Pro', 'Equipo', ent0, '9.500.000', '05/03/2024', '', '']]))
+  const leer = async file => {
+    setErr('')
+    try {
+      const text = await leerArchivoTexto(file); const { rows, delim } = parseCSV(text)
+      if (rows.length < 2) throw new Error('El archivo no tiene filas de datos.')
+      const head = rows[0].map(norm)
+      const alias = { nombre: ['nombre', 'activo', 'descripcion', 'detalle', 'bien'], tipo: ['tipo', 'clase', 'categoria'], entidad: ['entidad', 'propietario', 'dueño', 'dueno', 'persona'], valor: ['valor', 'valor estimado', 'valor actual', 'valor compra', 'costo', 'precio', 'monto', 'avaluo'], fecha_compra: ['fecha compra', 'fecha_compra', 'fecha de compra', 'fecha adquisicion', 'fecha de adquisicion', 'adquisicion', 'fecha'], identificador: ['identificador', 'placa', 'matricula', 'serial', 'serie', 'id'], notas: ['notas', 'nota', 'observaciones'] }
+      const idx = {}; ACSV_COLS.forEach(c => { idx[c] = head.findIndex(h => alias[c].includes(h)); if (idx[c] < 0) idx[c] = head.findIndex(h => alias[c].some(a => h.includes(a))) })
+      if (idx.nombre < 0 || idx.valor < 0) throw new Error(`No encontré las columnas obligatorias "nombre" y "valor". Encabezados: ${rows[0].join(' | ')}`)
+      const get = (r, c) => idx[c] >= 0 ? String(r[idx[c]] ?? '').trim() : ''
+      const nuevos = { ent: new Set() }
+      const items = rows.slice(1).filter(r => r.some(v => String(v ?? '').trim())).map((r, i) => {
+        const w = [], e = []
+        const nombre = get(r, 'nombre'); if (!nombre) e.push('Sin nombre')
+        const valor = parseMonto(get(r, 'valor')); if (isNaN(valor) || valor < 0) e.push('Valor inválido')
+        const tipoRaw = get(r, 'tipo'); let tipo = matchOpt(tipoRaw, TIPOS_ACTIVO); if (!tipo) { const n = norm(tipoRaw); tipo = /carro|auto|camioneta|vehic/.test(n) ? 'Vehículo' : /moto/.test(n) ? 'Moto' : /casa|apto|apartamento|lote|finca|local|inmueble|oficina/.test(n) ? 'Inmueble' : /comput|laptop|celular|telefono|tv|equipo|pc|tablet/.test(n) ? 'Equipo' : 'Otro'; if (tipoRaw) w.push(`Tipo "${tipoRaw}" → ${tipo}`); else w.push('Sin tipo → ' + tipo) }
+        const entRaw = get(r, 'entidad'); let ent = matchOpt(entRaw, db.entidades, x => x.nombre); if (!ent) { if (entRaw) { nuevos.ent.add(entRaw); w.push(`Entidad nueva: ${entRaw}`) } else { ent = db.entidades[0]; w.push(`Sin entidad → ${ent?.nombre || '—'}`) } }
+        const fRaw = get(r, 'fecha_compra'); let fecha = parseFecha(fRaw); if (!fecha && fRaw) w.push(`Fecha "${fRaw}" no reconocida; queda vacía`)
+        const dup = db.activos.some(a => norm(a.nombre) === norm(nombre)); if (dup) w.push('Ya existe un activo con este nombre; se creará otro')
+        return { n: i + 2, nombre, valor, tipo, ent, entRaw, fecha, identificador: get(r, 'identificador'), notas: get(r, 'notas'), w, e }
+      })
+      if (!items.length) throw new Error('El archivo no tiene filas de datos.')
+      setParsed({ items, delim, nuevos: { ent: [...nuevos.ent] } })
+    } catch (ex) { setErr(ex.message || String(ex)) }
+  }
+  const validos = parsed ? parsed.items.filter(x => !x.e.length) : []
+  const confirmar = async () => {
+    const mapE = Object.fromEntries(db.entidades.map(x => [norm(x.nombre), x.id]))
+    if (crear) for (const n of parsed.nuevos.ent) { const r = await insertar('entidades', { nombre: n, tipo: 'persona' }); mapE[norm(n)] = r.id }
+    await insertarVarios('activos', validos.map(x => ({ nombre: x.nombre, tipo: x.tipo, entidad_id: x.ent?.id || mapE[norm(x.entRaw)] || null, identificador: x.identificador || null, valor_estimado: x.valor, fecha_adquisicion: x.fecha || null, notas: x.notas || null })))
+    onClose()
+  }
+  const total = validos.reduce((a, x) => a + x.valor, 0)
+  return (
+    <Modal title="Importar activos" onClose={onClose}>
+      {!parsed ? <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <Aviso tipo="info">CSV con columnas <b>nombre</b> y <b>valor</b> (obligatorias) y opcionales <code>tipo, entidad, fecha_compra, identificador, notas</code>. Tipos: {TIPOS_ACTIVO.join(', ')} (también entiende "carro", "apto", "laptop"…). Acepta <code>1.200.000</code> y fechas <code>DD/MM/AAAA</code>.</Aviso>
+        <button onClick={plantilla} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, border: '1px solid #d1d5db', borderRadius: 12, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#374151' }}><Icon name="download" size={16} />Descargar plantilla CSV</button>
+        <div onClick={() => fileRef.current.click()} style={{ border: '2px dashed #c4b5fd', borderRadius: 14, padding: '28px 16px', textAlign: 'center', cursor: 'pointer', background: '#faf5ff' }}>
+          <div style={{ color: '#7c3aed', marginBottom: 8 }}><Icon name="upload" size={30} sw={1.5} /></div><div style={{ fontWeight: 700, fontSize: 14, color: '#4c1d95' }}>Toca para elegir el archivo</div>
+          <input ref={fileRef} type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" style={{ display: 'none' }} onChange={e => { const f = e.target.files[0]; if (f) leer(f); e.target.value = '' }} />
+        </div>
+        {err && <Aviso tipo="err">{err}</Aviso>}
+      </div> : <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}><Kpi value={validos.length} label="Válidos" color="#059669" /><Kpi value={validos.filter(x => x.w.length).length} label="Con avisos" color="#d97706" /><Kpi value={parsed.items.length - validos.length} label="Con errores" color="#dc2626" /></div>
+        {parsed.nuevos.ent.length > 0 && <Aviso tipo="warn"><label style={{ display: 'flex', gap: 8, cursor: 'pointer' }}><input type="checkbox" checked={crear} onChange={e => setCrear(e.target.checked)} /><span>Crear entidades que no existen: {parsed.nuevos.ent.join(', ')}</span></label></Aviso>}
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden', maxHeight: 300, overflowY: 'auto' }}>
+          {parsed.items.map(x => <div key={x.n} style={{ padding: '8px 10px', borderBottom: '1px solid #f3f4f6', background: x.e.length ? '#fff5f5' : x.w.length ? '#fffbeb' : '#fff' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12, fontWeight: 700, color: x.e.length ? '#991b1b' : '#111' }}><span style={{ color: '#9ca3af', fontWeight: 500 }}>#{x.n} </span>{x.nombre || '(sin nombre)'}</div>
+              <div style={{ fontSize: 10, color: '#6b7280' }}>{x.tipo} · {x.ent?.nombre || x.entRaw || '—'}{x.fecha ? ` · ${fmtDate(x.fecha)}` : ''}{x.identificador ? ` · ${x.identificador}` : ''}</div>
+              {x.e.map((m, i) => <div key={i} style={{ fontSize: 10, color: '#dc2626' }}>✕ {m}</div>)}{x.w.map((m, i) => <div key={i} style={{ fontSize: 10, color: '#b45309' }}>· {m}</div>)}</div>
+              <div style={{ fontWeight: 800, fontSize: 12, whiteSpace: 'nowrap', color: '#059669' }}>{isNaN(x.valor) ? '—' : fmtCOP(x.valor)}</div></div>
+          </div>)}
+        </div>
+        <div style={{ fontSize: 11, color: '#6b7280', textAlign: 'right' }}>Total a importar: <b>{fmtCOP(total)}</b></div>
+        <div style={{ display: 'flex', gap: 10 }}><CancelBtn onClick={() => setParsed(null)} /><SaveBtn onClick={confirmar} disabled={!validos.length}>Importar {validos.length}</SaveBtn></div>
+      </div>}
+    </Modal>
   )
 }

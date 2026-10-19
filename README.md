@@ -1,4 +1,4 @@
-# Finanzas Integradas
+# Akontapp
 
 App de finanzas del hogar, multi-hogar y multi-miembro. React + Vite en el frontend, Supabase (Postgres + Auth + Storage) como backend, desplegada en Netlify.
 
@@ -31,7 +31,7 @@ App de finanzas del hogar, multi-hogar y multi-miembro. React + Vite en el front
 ### 4. Primer uso
 1. Abre la URL en el celular, escribe tu correo y escribe el **código numérico** que llega. (El correo también trae un enlace; sirve si lo abres en el mismo navegador, pero en la app instalada usa siempre el código.)
 2. Crea tu hogar. Para invitar a tu familia: **Config → Hogar → Compartir**.
-3. Carga masiva: en **Presupuesto** y en **Programado** (Obligaciones e Ingresos) el botón de subir (↑) importa un CSV; cada uno ofrece su plantilla descargable. Acepta `;` o `,`, montos `1.200.000` / `$ 78.500` y fechas `DD/MM/AAAA`. Maestros faltantes (entidad, categoría, cuenta) se crean al importar si lo autorizas.
+3. Carga masiva: en **Presupuesto**, **Programado** (Obligaciones e Ingresos) y **Activos** el botón de subir (↑) importa un CSV; cada uno ofrece su plantilla descargable. Acepta `;` o `,`, montos `1.200.000` / `$ 78.500` y fechas `DD/MM/AAAA`. Maestros faltantes (entidad, categoría, cuenta) se crean al importar si lo autorizas.
 4. En iPhone: Safari → Compartir → **Agregar a pantalla de inicio**.
 
 ## Desarrollo local
@@ -43,7 +43,7 @@ npm run build            # genera dist/
 ```
 
 ## Pruebas
-`test/e2e.mjs` recorre los flujos principales (34 verificaciones) contra un backend simulado en memoria (`test/mockSupabase.js`), incluyendo aislamiento entre hogares. Requiere Chromium de Playwright:
+`test/e2e.mjs` recorre los flujos principales (43 verificaciones) contra un backend simulado en memoria (`test/mockSupabase.js`), incluyendo aislamiento entre hogares. Requiere Chromium de Playwright:
 ```
 npx vite build -c test/vite.test.config.js && node test/e2e.mjs
 ```
