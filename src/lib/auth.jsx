@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 
-export const SCHEMA_VERSION = '4'
+export const SCHEMA_VERSION = '5'
 const Ctx = createContext(null)
 export const useAuth = () => useContext(Ctx)
 

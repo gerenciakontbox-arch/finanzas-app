@@ -60,8 +60,9 @@ function Segmento({ value, onChange, opciones }) {
 function Shell() {
   const { session, listo, schemaOk, espacio, miembroActual, user } = useAuth()
   const { db, error } = useData()
-  const [tab, setTab] = useState('dashboard')
-  const [sub, setSub] = useState({ plan: 'presupuesto', mas: 'activos' })
+  const ir = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('ir') : null  // deep link desde un aviso: /?ir=programado
+  const [tab, setTab] = useState(ir && PADRE[ir] ? PADRE[ir] : ir && TABS.some(t => t[0] === ir) ? ir : 'dashboard')
+  const [sub, setSub] = useState({ plan: ir === 'programado' ? 'programado' : 'presupuesto', mas: ir === 'config' ? 'config' : 'activos' })
   const [arg, setArg] = useState(null)
   if (session === undefined) return <Cargando />
   if (!session) return <Login />

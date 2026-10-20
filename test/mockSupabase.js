@@ -9,9 +9,9 @@ const CATS = [['Arriendo', 'Fijo'], ['Servicios públicos', 'Fijo'], ['Internet'
 const CATS_EMP = [['Arriendo', 'Fijo'], ['Nómina', 'Fijo'], ['Honorarios', 'Variable'], ['Software y suscripciones', 'Fijo'], ['Impuestos', 'Provisión'], ['Cuota crédito', 'Amortización crédito'], ['Pago tarjeta crédito', 'Amortización crédito'], ['Ventas', 'Variable'], ['Otro', 'Variable']]
 
 export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}) {
-  const T = {}; const tablas = ['app_meta', 'espacios', 'espacio_miembros', 'perfiles', 'categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'programado', 'programado_adjuntos', 'movimientos', 'bitacora']
+  const T = {}; const tablas = ['app_meta', 'espacios', 'espacio_miembros', 'perfiles', 'categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'programado', 'programado_adjuntos', 'movimientos', 'bitacora', 'push_suscripciones']
   tablas.forEach(t => T[t] = [])
-  T.app_meta.push({ clave: 'schema_version', valor: '4' })
+  T.app_meta.push({ clave: 'schema_version', valor: '5' })
   let session = null; const listeners = []
   const me = () => session?.user?.id
   const misEspacios = (u = me()) => T.espacio_miembros.filter(m => m.user_id === u).map(m => m.espacio_id)
@@ -41,6 +41,7 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
     if (t === 'app_meta') return true
     if (t === 'espacios') return mine.includes(r.id)
     if (t === 'perfiles') return r.user_id === me()
+    if (t === 'push_suscripciones') return r.user_id === me()
     if (t === 'espacio_miembros') return mine.includes(r.espacio_id)
     if (t === 'cuentas') return mine.includes(r.espacio_id) || T.cuentas_espacio.some(x => x.cuenta_id === r.id && mine.includes(x.espacio_id))
     if (t === 'cuentas_espacio') return mine.includes(r.espacio_id) || mine.includes(T.cuentas.find(c => c.id === r.cuenta_id)?.espacio_id)

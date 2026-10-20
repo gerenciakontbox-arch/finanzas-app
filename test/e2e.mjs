@@ -205,6 +205,8 @@ st = await DB(() => { const T = window.__sb._T; const a = T.presupuesto.find(x =
 ok('Desprogramar: rubro vuelve a Planificado y la ocurrencia pendiente desaparece', st.e === 'Planificado' && st.oc === 0)
 await page.screenshot({ path: 'test/shot-presup-prog.png', fullPage: true })
 
+await tab('Config'); await click('button', { hasText: 'Avisos' }); ok('Ajustes → Avisos: sección de avisos push', /Avisos de vencimientos/.test(await T()) && /7:00/.test(await T()))
+
 // Amigo: aislamiento total
 await loginAs('u-amigo', 'amigo@test.co'); await page.fill('input[placeholder="Ej. Andrés"]', 'Amigo'); await click('button', { hasText: 'Guardar' }); await wait(200)
 await tab('Config'); ok('Amigo solo ve su espacio personal', /Mis espacios/.test(await T()) && !/Casa Quijano/.test(await T()) && !/Kontbox/.test(await T()))

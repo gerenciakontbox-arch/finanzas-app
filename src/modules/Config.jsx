@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useData } from '../lib/data'
 import { useAuth } from '../lib/auth'
-import { Card, Icon, IcoText, Modal, Field, inp, sel, PBtn, SaveBtn, CancelBtn, SmallBtn, Aviso, useForm } from '../lib/ui'
+import { Card, Icon, IcoText, Modal, Field, inp, sel, PBtn, SaveBtn, CancelBtn, SmallBtn, Aviso, useForm, T } from '../lib/ui'
 import { fmtCOP, fmtDate, today, TIPOS_CTA, TC, GRUPOS } from '../lib/util'
 import { toCSV, descargar } from '../lib/csv'
 import { TIPO_ICON, TIPO_LABEL } from '../App'
+import { soportado, configurado, permiso, esIOS, esStandalone, activar, desactivar, suscripcionActual, enviarPrueba } from '../lib/push'
 
 export default function Config() {
   const [sec, setSec] = useState('espacios')
@@ -14,9 +15,10 @@ export default function Config() {
         <PBtn active={sec === 'espacios'} onClick={() => setSec('espacios')}><IcoText name="home" size={13}>Espacios</IcoText></PBtn>
         <PBtn active={sec === 'cuentas'} onClick={() => setSec('cuentas')}><IcoText name="landmark" size={13}>Cuentas</IcoText></PBtn>
         <PBtn active={sec === 'categorias'} onClick={() => setSec('categorias')}><IcoText name="tag" size={13}>Categorías</IcoText></PBtn>
+        <PBtn active={sec === 'avisos'} onClick={() => setSec('avisos')}><IcoText name="alert" size={13}>Avisos</IcoText></PBtn>
         <PBtn active={sec === 'datos'} onClick={() => setSec('datos')}><IcoText name="file" size={13}>Datos</IcoText></PBtn>
       </div>
-      {sec === 'espacios' && <Espacios />}{sec === 'cuentas' && <Cuentas />}{sec === 'categorias' && <Categorias />}{sec === 'datos' && <Datos />}
+      {sec === 'espacios' && <Espacios />}{sec === 'cuentas' && <Cuentas />}{sec === 'categorias' && <Categorias />}{sec === 'avisos' && <Avisos />}{sec === 'datos' && <Datos />}
     </div>
   )
 }
@@ -194,3 +196,34 @@ function Datos() {
   )
 }
 
+
+// Avisos push: un aviso diario (7:00) con los vencimientos de hoy y los atrasados de Programado, en todos los espacios del usuario.
+function Avisos() {
+  const { userId } = useAuth()
+  const [activo, setActivo] = useState(null); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null)
+  useEffect(() => { let on = true; suscripcionActual().then(s => { if (on) setActivo(!!s) }).catch(() => setActivo(false)); return () => { on = false } }, [])
+  const ios = esIOS(), instalada = esStandalone(), perm = permiso()
+  const bloqueado = ios && !instalada
+  const toggle = async () => {
+    setBusy(true); setMsg(null)
+    try { if (activo) { await desactivar(); setActivo(false); setMsg(['ok', 'Avisos desactivados en este dispositivo.']) } else { await activar(userId); setActivo(true); setMsg(['ok', 'Listo. Cada día a las 7:00 recibirás los vencimientos del día.']) } }
+    catch (e) { setMsg(['err', e.message]) } finally { setBusy(false) }
+  }
+  const prueba = async () => { setBusy(true); setMsg(null); try { setMsg(['ok', await enviarPrueba()]) } catch (e) { setMsg(['err', e.message]) } finally { setBusy(false) } }
+  return (
+    <Card>
+      <div style={{ fontWeight: 800, fontSize: 15, color: T.tinta }}>Avisos de vencimientos</div>
+      <div style={{ fontSize: 12, color: T.gris, marginTop: 4, lineHeight: 1.5 }}>Cada día a las 7:00 a. m. te llega una notificación con lo que vence hoy y lo que quedó atrasado en Programado, de todos tus espacios. Si no hay nada, no te molesta.</div>
+      {!configurado() && <div style={{ marginTop: 12 }}><Aviso tipo="warn">El servidor aún no tiene configuradas las llaves de avisos (VAPID). Falta un paso de despliegue.</Aviso></div>}
+      {configurado() && !soportado() && <div style={{ marginTop: 12 }}><Aviso tipo="warn">Este navegador no soporta avisos push.</Aviso></div>}
+      {bloqueado && <div style={{ marginTop: 12 }}><Aviso tipo="info">En iPhone los avisos solo funcionan con la app instalada: en Safari toca <b>Compartir → Añadir a pantalla de inicio</b>, ábrela desde ahí y activa los avisos.</Aviso></div>}
+      {perm === 'denied' && <div style={{ marginTop: 12 }}><Aviso tipo="err">Las notificaciones están bloqueadas para Akontapp en este dispositivo. Actívalas en los ajustes del sistema y vuelve aquí.</Aviso></div>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+        <button onClick={toggle} disabled={busy || !soportado() || bloqueado || perm === 'denied' || activo === null} style={{ flex: 1, height: 44, borderRadius: 22, border: 'none', background: activo ? '#fff' : T.morado, color: activo ? T.tinta : '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', outline: activo ? `1.5px solid ${T.divisor}` : 'none', opacity: busy ? 0.6 : 1 }}>{activo === null ? '…' : activo ? 'Desactivar en este dispositivo' : 'Activar avisos en este dispositivo'}</button>
+        {activo && <SmallBtn onClick={prueba} bg={T.superficie} color={T.morado}><Icon name="alert" size={12} />Enviar prueba</SmallBtn>}
+      </div>
+      {msg && <div style={{ marginTop: 10 }}><Aviso tipo={msg[0]}>{msg[1]}</Aviso></div>}
+      <div style={{ fontSize: 11, color: T.grisClaro, marginTop: 12 }}>Se activa por dispositivo: hazlo en cada teléfono donde quieras recibirlos.</div>
+    </Card>
+  )
+}

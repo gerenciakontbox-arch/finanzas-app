@@ -6,6 +6,7 @@
 set client_min_messages = warning;
 \i /home/claude/finanzas-app/supabase/migrations/0003_creditos_plan.sql
 \i /home/claude/finanzas-app/supabase/migrations/0004_codigo_invitacion.sql
+\i /home/claude/finanzas-app/supabase/migrations/0005_push.sql
 grant all on all tables in schema public to authenticated;
 
 \set a '11111111-1111-1111-1111-111111111111'
@@ -87,5 +88,11 @@ insert into activos(espacio_id, nombre, tipo, valor_estimado, vida_util_meses) v
 select crear_espacio('empresa', 'Alma Beauty Studio', 'Carlos') as emp \gset
 select length(codigo_invitacion) as cod_8, codigo_invitacion ~ '^[0-9A-F]{8}$' as cod_hex from espacios where id = :'emp';
 select regenerar_codigo(:'emp') ~ '^[0-9A-F]{8}$' as regenerado_ok;
-select valor as schema_version_4 from app_meta where clave='schema_version';
+\echo '=== Push: cada usuario solo ve sus suscripciones'
+insert into push_suscripciones(user_id, endpoint, p256dh, auth) values (:'a', 'https://push.example/a1', 'k', 'a');
+set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
+select count(*) as esposa_ve_0 from push_suscripciones;
+set request.jwt.claim.sub = :'a';
+select count(*) as andres_ve_1 from push_suscripciones;
+select valor as schema_version_5 from app_meta where clave='schema_version';
 reset role;
