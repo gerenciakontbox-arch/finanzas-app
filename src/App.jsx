@@ -13,11 +13,11 @@ import Programado from './modules/Programado'
 import Config from './modules/Config'
 
 // 5 secciones: Plan agrupa Presupuesto + Programado; Más agrupa Activos + Ajustes.
-const TABS = [['dashboard', 'home', 'Inicio'], ['movimientos', 'arrows', 'Movimientos'], ['plan', 'clock', 'Plan'], ['deudas', 'card', 'Deudas'], ['mas', 'dots', 'Más']]
-const PADRE = { presupuesto: 'plan', programado: 'plan', activos: 'mas', config: 'mas' }
+const TABS = [['dashboard', 'home', 'Inicio'], ['movimientos', 'arrows', 'Movimientos'], ['plan', 'clock', 'Plan'], ['deudas', 'card', 'Deudas'], ['activos', 'landmark', 'Activos'], ['config', 'gear', 'Ajustes']]
+const PADRE = { presupuesto: 'plan', programado: 'plan' }
 export const TIPO_ICON = { personal: 'user', hogar: 'home', empresa: 'landmark' }
 export const TIPO_LABEL = { personal: 'Personal', hogar: 'Hogar', empresa: 'Empresa' }
-const TITULO = { movimientos: 'Movimientos', plan: 'Plan', deudas: 'Deudas', mas: 'Más' }
+const TITULO = { movimientos: 'Movimientos', plan: 'Plan', deudas: 'Deudas', activos: 'Activos', config: 'Ajustes' }
 
 function Cargando({ texto = 'Cargando…' }) {
   return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', flexDirection: 'column', gap: 14, background: T.morado, color: '#fff' }}><Icon name="wallet" size={40} sw={1.6} /><div style={{ fontWeight: 600, fontSize: 14, opacity: 0.85 }}>{texto}</div></div>
@@ -62,7 +62,7 @@ function Shell() {
   const { db, error } = useData()
   const ir = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('ir') : null  // deep link desde un aviso: /?ir=programado
   const [tab, setTab] = useState(ir && PADRE[ir] ? PADRE[ir] : ir && TABS.some(t => t[0] === ir) ? ir : 'dashboard')
-  const [sub, setSub] = useState({ plan: ir === 'programado' ? 'programado' : 'presupuesto', mas: ir === 'config' ? 'config' : 'activos' })
+  const [sub, setSub] = useState({ plan: ir === 'programado' ? 'programado' : 'presupuesto' })
   const [arg, setArg] = useState(null)
   if (session === undefined) return <Cargando />
   if (!session) return <Login />
@@ -73,7 +73,7 @@ function Shell() {
   const autoNombre = miembroActual && user?.email && miembroActual.nombre === user.email.split('@')[0]
   const goTo = (k, a = null) => { const p = PADRE[k]; if (p) { setSub(s => ({ ...s, [p]: k })); setTab(p) } else setTab(k); setArg(a ? { ...a, _k: Date.now() } : null) }
   const props = { goTo }
-  const vista = tab === 'plan' || tab === 'mas' ? sub[tab] : tab
+  const vista = tab === 'plan' ? sub.plan : tab
   const inicio = tab === 'dashboard'
   const nombre = miembroActual?.nombre || '—'
   return (
@@ -94,7 +94,6 @@ function Shell() {
       {inicio ? <Dashboard {...props} /> : (
         <div style={{ padding: '16px 20px 8px', display: 'flex', flexDirection: 'column', gap: 16 }}>
           {tab === 'plan' && <Segmento value={sub.plan} onChange={k => setSub(s => ({ ...s, plan: k }))} opciones={[['presupuesto', 'Presupuesto'], ['programado', 'Programado']]} />}
-          {tab === 'mas' && <Segmento value={sub.mas} onChange={k => setSub(s => ({ ...s, mas: k }))} opciones={[['activos', 'Activos'], ['config', 'Ajustes']]} />}
           {vista === 'presupuesto' && <Presupuesto {...props} />}
           {vista === 'movimientos' && <Movimientos {...props} inicial={arg} />}
           {vista === 'deudas' && <Deudas {...props} />}
@@ -103,11 +102,11 @@ function Shell() {
           {vista === 'config' && <Config {...props} />}
         </div>
       )}
-      <nav aria-label="Secciones" className="safe-bot" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', paddingTop: 10, paddingLeft: 6, paddingRight: 6, zIndex: 100, boxShadow: '0 -8px 24px rgba(27,27,31,0.06)' }}>
+      <nav aria-label="Secciones" className="safe-bot" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', paddingTop: 10, paddingLeft: 6, paddingRight: 6, zIndex: 100, boxShadow: '0 -8px 24px rgba(27,27,31,0.06)' }}>
         {TABS.map(([k, icon, label]) => { const on = tab === k; return (
           <button key={k} onClick={() => { setTab(k); setArg(null) }} aria-current={on ? 'page' : undefined} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '2px 0 6px', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: on ? T.morado : T.gris, minWidth: 0 }}>
             <Icon name={icon} size={22} sw={on ? 2.2 : 2} />
-            <span style={{ fontSize: 10, fontWeight: on ? 700 : 600 }}>{label}</span>
+            <span style={{ fontSize: 9.5, fontWeight: on ? 700 : 600, letterSpacing: '-0.1px', whiteSpace: 'nowrap' }}>{label}</span>
           </button>) })}
       </nav>
     </div>

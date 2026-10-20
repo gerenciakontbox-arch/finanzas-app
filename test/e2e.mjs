@@ -14,7 +14,7 @@ page.on('dialog', d => d.accept())
 const T = () => page.evaluate(() => document.body.innerText)
 const DB = fn => page.evaluate(fn)
 const wait = ms => page.waitForTimeout(ms)
-const NAV = { 'Inicio': ['Inicio'], 'Movim.': ['Movimientos'], 'Deudas': ['Deudas'], 'Presup.': ['Plan', 'Presupuesto'], 'Progr.': ['Plan', 'Programado'], 'Activos': ['Más', 'Activos'], 'Config': ['Más', 'Ajustes'] }
+const NAV = { 'Inicio': ['Inicio'], 'Movim.': ['Movimientos'], 'Deudas': ['Deudas'], 'Presup.': ['Plan', 'Presupuesto'], 'Progr.': ['Plan', 'Programado'], 'Activos': ['Activos'], 'Config': ['Ajustes'] }
 const tab = async l => { const [n, seg] = NAV[l] || [l]; await page.locator('nav button', { hasText: new RegExp('^' + n + '$') }).click(); await wait(150); if (seg) { await page.locator('[role=tab]', { hasText: seg }).click(); await wait(200) } }
 const click = async (sel, opt) => { await page.locator(sel, opt).first().click(); await wait(150) }
 const submit = async (txt) => { await page.locator('button', { hasText: txt }).last().click(); await wait(250) }
