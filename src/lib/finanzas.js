@@ -11,14 +11,28 @@ export function indicePagadas(cuotas_pagadas) {
   return { deuda, cargo }
 }
 
-export function resumenDeuda(d, idx) {
-  const am = amortizacion({ capital: +d.capital_inicial, tasa: +d.tasa_mensual, n: d.total_cuotas, fechaInicio: d.fecha_primera_cuota })
+export function resumenDeuda(d, idx, abonos = []) {
   const pag = idx.deuda[d.id] || {}
+  const am = amortizacion({ capital: +d.capital_inicial, tasa: +d.tasa_mensual, n: d.total_cuotas, fechaInicio: d.fecha_primera_cuota, sistema: d.sistema || 'fija', seguro: +d.seguro_mensual || 0, pagadas: pag, abonos: abonos.filter(a => a.deuda_id === d.id) })
   const rows = am.map(c => ({ ...c, pago: pag[c.n] || null }))
   const pendientes = rows.filter(c => !c.pago)
-  const capitalPagado = rows.filter(c => c.pago).reduce((a, c) => a + c.capital, 0)
-  return { ...d, am: rows, pagadas: rows.length - pendientes.length, capitalPagado, capitalPendiente: pendientes.reduce((a, c) => a + c.capital, 0), pct: Math.round(capitalPagado / +d.capital_inicial * 100), proxima: pendientes[0] || null, cf: Math.round(cfFija(+d.capital_inicial, +d.tasa_mensual, d.total_cuotas)) }
+  const capitalPagado = rows.filter(c => c.pago).reduce((a, c) => a + c.capital, 0) + abonos.filter(a => a.deuda_id === d.id).reduce((a, x) => a + +x.monto, 0)
+  const capitalPendiente = pendientes.reduce((a, c) => a + c.capital, 0)
+  return { ...d, am: rows, cuotasTotales: rows.length, pagadas: rows.length - pendientes.length, capitalPagado, capitalPendiente, pct: Math.round(capitalPagado / +d.capital_inicial * 100), proxima: pendientes[0] || null, cf: pendientes[0] ? pendientes[0].total : 0, abonos: abonos.filter(a => a.deuda_id === d.id) }
 }
+
+// Depreciación lineal mensual con valor residual. Devuelve null si el activo no deprecia.
+export function depreciacion(a, hoy) {
+  if (!a.vida_util_meses) return null
+  const base = +(a.valor_base ?? a.valor_estimado) || 0, residual = Math.min(+a.valor_residual || 0, base), vida = +a.vida_util_meses
+  const desde = a.fecha_base || a.fecha_adquisicion; if (!desde) return { base, residual, vida, meses: 0, acumulada: 0, neto: base }
+  const d0 = new Date(desde + 'T12:00:00'), d1 = new Date((hoy || new Date().toISOString().slice(0, 10)) + 'T12:00:00')
+  const meses = Math.max(0, Math.min(vida, (d1.getFullYear() - d0.getFullYear()) * 12 + (d1.getMonth() - d0.getMonth()) + (d1.getDate() >= d0.getDate() ? 0 : -1)))
+  const mensual = (base - residual) / vida
+  const acumulada = Math.round(mensual * meses)
+  return { base, residual, vida, meses, mensual: Math.round(mensual), acumulada, neto: base - acumulada, pct: Math.round(meses / vida * 100) }
+}
+export const valorNeto = (a, hoy) => { const d = depreciacion(a, hoy); return d ? d.neto : +a.valor_estimado || 0 }
 
 export function resumenCargo(c, idx) {
   const am = amortizacion({ capital: +c.monto, tasa: +c.tasa_mensual, n: c.cuotas, fechaInicio: c.primera_cuota || addMonths(c.fecha, 1) })
@@ -37,7 +51,7 @@ export function resumenTarjeta(cuenta, tc_cargos, idx) {
 
 export function deudaTotal(db) {
   const idx = indicePagadas(db.cuotas_pagadas)
-  const cred = db.deudas.filter(d => d.estado === 'Activo').reduce((a, d) => a + resumenDeuda(d, idx).capitalPendiente, 0)
+  const cred = db.deudas.filter(d => d.estado === 'Activo').reduce((a, d) => a + resumenDeuda(d, idx, db.abonos_capital || []).capitalPendiente, 0)
   const tcs = db.cuentas.filter(c => c.tipo === TC).reduce((a, c) => a + resumenTarjeta(c, db.tc_cargos, idx).saldo, 0)
   return { cred, tcs, total: cred + tcs }
 }

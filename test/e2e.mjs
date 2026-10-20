@@ -145,6 +145,66 @@ for (const [k, f] of [['Movim.', 'mov'], ['Presup.', 'presup'], ['Progr.', 'prog
 await tab('Movim.'); await page.locator('div:has(> div > button:has-text("Todos")) > button').last().click(); await wait(200); await page.screenshot({ path: 'test/shot-modal-mov.png' }); await page.locator('button[aria-label="Cerrar"]').click(); await wait(150)
 await cambiarEspacio('Casa Quijano'); await tab('Deudas'); await page.screenshot({ path: 'test/shot-deudas-hogar.png', fullPage: true })
 
+// ===== Lote 3 · créditos: cuota decreciente con seguro, anticipo con motivo, abono a capital =====
+await cambiarEspacio('Personal'); await tab('Deudas'); await click('button', { hasText: 'Nuevo' })
+await fillLabel('Nombre', 'Crédito libre'); await selectLabel('Sistema de cuota', 'Abono fijo a capital (cuota decreciente)'); await fillLabel('Capital inicial', 12000000); await fillLabel('Tasa mensual (%)', 1.5); await fillLabel('Total cuotas', 12); await fillLabel('Seguros mensuales (COP)', 45000)
+const fut = new Date(); fut.setDate(fut.getDate() + 20); await fillLabel('Primera cuota', fut.toISOString().slice(0, 10)); await submit('Guardar')
+ok('Crédito decreciente creado con seguro', /Crédito libre/.test(await T()) && /Cuota decreciente/.test(await T()) && /seguro \$ 45\.000\/mes/.test(await T()))
+st = await DB(() => { const d = window.__sb._T.deudas.find(x => x.nombre === 'Crédito libre'); return { sistema: d.sistema, seg: d.seguro_mensual } })
+ok('Crédito guardado con sistema capital y seguro', st.sistema === 'capital' && st.seg === 45000)
+// la cuota 1 vence en 20 días → el botón pide motivo
+await page.locator('button', { hasText: /Cuota 1 · vence/ }).first().click(); await wait(200)
+ok('Pago anticipado: pide motivo', /Pago anticipado/.test(await T()) && /Adelanto de cuota/.test(await T()))
+await click('button', { hasText: /^Adelanto de cuota$/ }); await submit('Pagar con este motivo'); await wait(300)
+st = await DB(() => { const T = window.__sb._T; const d = T.deudas.find(x => x.nombre === 'Crédito libre'); const m = T.movimientos.find(x => x.deuda_id === d.id && !x.desglose.abono); const c = T.cuotas_pagadas.find(x => x.deuda_id === d.id); return { motivo: m?.motivo, monto: m?.monto, cap: c?.capital, seg: c?.seguro } })
+ok('Cuota 1 pagada con motivo, capital 1.000.000 + interés + seguro 45.000', st.motivo === 'Adelanto de cuota' && st.cap === 1000000 && st.seg === 45000 && st.monto === 1000000 + 180000 + 45000)
+// abono a capital reduciendo plazo
+await page.locator('button', { hasText: 'Ver tabla' }).last().click(); await wait(200)
+await click('button', { hasText: 'Abonar a capital' }); await fillLabel('Monto (COP)', 5000000); await submit('Registrar abono'); await wait(300)
+st = await DB(() => { const T = window.__sb._T; const d = T.deudas.find(x => x.nombre === 'Crédito libre'); const a = T.abonos_capital.find(x => x.deuda_id === d.id); return { modo: a?.modo, desp: a?.despues_de_cuota, monto: a?.monto } })
+ok('Abono a capital registrado tras la cuota 1 (modo plazo)', st.modo === 'plazo' && st.desp === 1 && st.monto === 5000000)
+await page.screenshot({ path: 'test/shot-credito.png', fullPage: true })
+ok('Tabla recalculada: menos cuotas y abono visible', /abono \$ 5\.000\.000/.test(await T()) && /\/(6|7) cuotas pagadas/.test(await T()))
+
+// ===== Lote 4 · depreciación =====
+await tab('Activos'); await page.locator('button[title="Nuevo activo"]').click(); await wait(150)
+await fillLabel('Nombre', 'Portátil'); await selectLabel('Tipo', 'Equipo'); await fillLabel('Valor estimado (COP)', 4000000)
+const hace = new Date(); hace.setMonth(hace.getMonth() - 12); await fillLabel('Fecha adquisición', hace.toISOString().slice(0, 10))
+await page.locator('label:has-text("Deprecia (lineal mensual)") input').check(); await selectLabel('Vida útil', '4 años'); await fillLabel('Valor residual (COP)', 400000); await submit('Guardar')
+st = await DB(() => { const a = window.__sb._T.activos.find(x => x.nombre === 'Portátil'); return { vida: a.vida_util_meses, res: a.valor_residual, base: a.valor_base, fb: a.fecha_base } })
+ok('Activo con depreciación guardada (48 meses, residual 400.000, base = valor)', st.vida === 48 && st.res === 400000 && st.base === 4000000 && !!st.fb)
+ok('Valor neto mostrado: 4.000.000 − 12×75.000 = 3.100.000 (25% depreciado)', /3\.100\.000/.test(await T()) && /25% depreciado/.test(await T()))
+
+// ===== Lote 4 · presupuesto → programado (ítem y CSV) con bloqueo =====
+await cambiarEspacio('Casa Quijano'); await tab('Presup.'); await plusBtn()
+await fillLabel('Concepto', 'Gas natural'); await fillLabel('Monto (COP)', 85000); await submit('Guardar')
+await page.locator('[data-item="Gas natural"] button', { hasText: /^Programar$/ }).click(); await wait(200)
+ok('Modal Programar con periodicidad', /Se repite/.test(await T()) && /Primer vencimiento/.test(await T()))
+await submit('Programar'); await wait(300)
+await page.screenshot({ path: 'test/shot-presup-bloqueado.png', fullPage: true })
+ok('Rubro programado y bloqueado (sin editar/eliminar; "Ver en Programado")', /Programado mensual/.test(await T()) && /Ver en Programado/.test(await T()) && /se paga desde Programado/.test(await T()))
+st = await DB(() => { const T = window.__sb._T; const r = T.presupuesto.find(x => x.concepto === 'Gas natural'); const o = T.programado.find(x => x.presupuesto_id === r.id); return { estado: r.estado, serie: !!r.programado_serie_id, oc: !!o, nombre: o?.nombre, monto: o?.monto } })
+ok('Ocurrencia creada en Programado vinculada al rubro', st.estado === 'Programado' && st.serie && st.oc && st.nombre === 'Gas natural' && st.monto === 85000)
+// pagar desde Programado → rubro Pagado, siguiente mes creado
+await tab('Progr.'); await page.locator('[data-item="Gas natural"] button', { hasText: /^Pagar$/ }).click(); await wait(200); await submit('Registrar pago'); await wait(400)
+st = await DB(() => { const T = window.__sb._T; const rs = T.presupuesto.filter(x => x.concepto === 'Gas natural').sort((a, b) => a.periodo.localeCompare(b.periodo)); const m = T.movimientos.find(x => x.descripcion === 'Gas natural' && x.tipo === 'Salida'); return { n: rs.length, e0: rs[0]?.estado, e1: rs[1]?.estado, auto: rs[1]?.auto_creado, link: m?.presupuesto_id === rs[0]?.id, oc1: T.programado.filter(x => x.nombre === 'Gas natural' && x.estado === 'Pendiente').length } })
+ok('Pago desde Programado: rubro de este mes Pagado, el del mes siguiente creado y Programado, movimiento ligado al rubro', st.n === 2 && st.e0 === 'Pagado' && st.e1 === 'Programado' && st.auto === true && st.link && st.oc1 === 1)
+// CSV con programar = sí y periodo distinto
+await tab('Presup.'); await page.locator('button[title="Importar CSV"]').click(); await wait(150)
+const mesSig = new Date(); mesSig.setMonth(mesSig.getMonth() + 2); const mm = String(mesSig.getMonth() + 1).padStart(2, '0'), yy = mesSig.getFullYear()
+await page.setInputFiles('input[type=file]', { name: 'p.csv', mimeType: 'text/csv', buffer: Buffer.from(`concepto,monto,fecha,periodo,programar,periodicidad\nSeguro carro,120000,05/${mm}/${yy},${mm}/${yy},sí,Mensual\nRegalos,200000,,${mm}/${yy},no,\n`) }); await wait(400)
+ok('CSV: fila con programar=sí y periodo futuro reconocida', /se programa mensual/.test(await T()) && /Regalos/.test(await T()))
+await submit('Importar 2'); await wait(500)
+st = await DB(() => { const T = window.__sb._T; const a = T.presupuesto.find(x => x.concepto === 'Seguro carro'); const b = T.presupuesto.find(x => x.concepto === 'Regalos'); const o = T.programado.find(x => x.presupuesto_id === a?.id); return { pa: a?.periodo, ea: a?.estado, eb: b?.estado, pb: b?.periodo, oc: !!o, per: o?.periodicidad } })
+ok('CSV importado: "Seguro carro" programado mensual en su periodo; "Regalos" solo en presupuesto', st.pa === `${yy}-${mm}-01` && st.ea === 'Programado' && st.oc && st.per === 'Mensual' && st.eb === 'Planificado' && st.pb === `${yy}-${mm}-01`)
+// desprogramar
+await page.locator('select').first().selectOption({ index: 0 }); await wait(150)
+const sel2 = page.locator('select').first(); const opts = await sel2.locator('option').allTextContents(); const iOpt = opts.findIndex(o => o.toLowerCase().startsWith(mesSig.toLocaleDateString('es-CO', { month: 'long' }))); if (iOpt >= 0) { await sel2.selectOption({ index: iOpt }); await wait(200) }
+await page.locator('[data-item="Seguro carro"] button', { hasText: /^Desprogramar$/ }).click(); await wait(300)
+st = await DB(() => { const T = window.__sb._T; const a = T.presupuesto.find(x => x.concepto === 'Seguro carro'); return { e: a?.estado, oc: T.programado.filter(x => x.nombre === 'Seguro carro' && x.estado === 'Pendiente').length } })
+ok('Desprogramar: rubro vuelve a Planificado y la ocurrencia pendiente desaparece', st.e === 'Planificado' && st.oc === 0)
+await page.screenshot({ path: 'test/shot-presup-prog.png', fullPage: true })
+
 // Amigo: aislamiento total
 await loginAs('u-amigo', 'amigo@test.co'); await page.fill('input[placeholder="Ej. Andrés"]', 'Amigo'); await click('button', { hasText: 'Guardar' }); await wait(200)
 await tab('Config'); ok('Amigo solo ve su espacio personal', /Mis espacios/.test(await T()) && !/Casa Quijano/.test(await T()) && !/Kontbox/.test(await T()))

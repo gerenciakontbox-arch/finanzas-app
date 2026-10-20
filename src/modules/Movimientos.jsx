@@ -5,13 +5,14 @@ import { Kpi, Card, Icon, IcoText, Modal, Field, inp, sel, PBtn, SaveBtn, Cancel
 import { fmtCOP, fmtDate, today, TC } from '../lib/util'
 import { indicePagadas, resumenDeuda } from '../lib/finanzas'
 import { parseMonto } from '../lib/csv'
+import { esAnticipado, MotivoAnticipo } from './Deudas'
 
 const SUB = { aporte: ['Aporte a', '#4B1D9E', '#F3F1F8'], recibido: ['Recibido de', '#138A5B', '#E7F5EE'], devolucion: ['Devolución de', '#138A5B', '#E7F5EE'], traslado: ['Traslado', '#0F6E8C', '#E6F2F6'] }
 
 export default function Movimientos({ goTo, inicial }) {
   const { db, insertar, borrar, rpc, espacioDe, nombreCuenta, duenoCuenta, nombreMiembro, cuentasDe } = useData(); const ix = useIndices()
   const { espacio, esPersonal, userId, miembros, compartidos } = useAuth()
-  const [modal, setModal] = useState(false); const [filtro, setFiltro] = useState('todos'); const [mes, setMes] = useState(today().slice(0, 7))
+  const [modal, setModal] = useState(false); const [filtro, setFiltro] = useState('todos'); const [mes, setMes] = useState(today().slice(0, 7)); const [anticipo, setAnticipo] = useState(false)
   const cuentasCaja = db.cuentas.filter(c => c.tipo !== TC)
   const empty = { fecha: today(), tipo: 'Salida', descripcion: '', categoria_id: db.categorias.find(c => c.activa !== false)?.id || null, cuenta_id: cuentasCaja[0]?.id || null, cuenta_destino_id: '', modo_destino: espacio.tipo === 'empresa' ? 'ingreso' : 'devolucion', activo_id: null, presupuesto_id: null, monto: '', deuda_id: '', cuotaN: '', manejo: '', mora: '', seguros: '', otros: '', aMiembro: false }
   const [form, sf, setForm] = useForm(empty)
@@ -20,7 +21,7 @@ export default function Movimientos({ goTo, inicial }) {
   const isCreditPay = form.tipo === 'Salida' && catSel?.nombre === 'Cuota crédito'
   const idx = indicePagadas(db.cuotas_pagadas)
   const creditos = db.deudas.filter(d => d.estado === 'Activo')
-  const credSel = creditos.find(d => d.id === form.deuda_id); const rCred = credSel ? resumenDeuda(credSel, idx) : null
+  const credSel = creditos.find(d => d.id === form.deuda_id); const rCred = credSel ? resumenDeuda(credSel, idx, db.abonos_capital) : null
   const cuotaSel = rCred?.am.find(c => c.n === +form.cuotaN) || null
   const xM = parseMonto(form.manejo) || 0, xMo = parseMonto(form.mora) || 0, xS = parseMonto(form.seguros) || 0, xO = parseMonto(form.otros) || 0
   const totalCred = cuotaSel ? cuotaSel.total + xM + xMo + xS + xO : 0
@@ -30,11 +31,12 @@ export default function Movimientos({ goTo, inicial }) {
   const cuentasMiembros = cuentasCaja.filter(c => { const d = duenoCuenta(c); return d && d !== null })
   const canSave = form.descripcion && (isCreditPay ? !!cuotaSel : montoNum > 0) && (!esTraslado || (form.cuenta_destino_id && form.cuenta_destino_id !== form.cuenta_id)) && (!form.aMiembro || form.cuenta_destino_id)
 
-  const save = async () => {
+  const save = async (motivo = null) => {
     if (!canSave) return
+    if (isCreditPay && !motivo && esAnticipado(cuotaSel.fecha)) { setAnticipo(true); return }
     try {
       if (isCreditPay) {
-        await rpc('pagar_cuota_credito', { p_deuda: credSel.id, p_numero: cuotaSel.n, p_fecha: form.fecha, p_cuenta: form.cuenta_id || null, p_capital: cuotaSel.capital, p_interes: cuotaSel.interes, p_extras: { cuota_manejo: xM, mora: xMo, seguros: xS, otros: xO } })
+        await rpc('pagar_cuota_credito', { p_deuda: credSel.id, p_numero: cuotaSel.n, p_fecha: form.fecha, p_cuenta: form.cuenta_id || null, p_capital: cuotaSel.capital, p_interes: cuotaSel.interes, p_extras: { cuota_manejo: xM, mora: xMo, seguros: xS, otros: xO }, p_motivo: motivo, p_seguro: cuotaSel.seguro || 0 })
       } else {
         const row = { fecha: form.fecha, tipo: form.tipo, descripcion: form.descripcion, categoria_id: esTraslado ? null : (form.categoria_id || null), cuenta_id: form.cuenta_id || null, activo_id: form.activo_id || null, presupuesto_id: form.presupuesto_id || null, origen: 'manual', monto: montoNum }
         if (esTraslado) { row.subtipo = 'traslado'; row.cuenta_destino_id = form.cuenta_destino_id }
@@ -115,11 +117,13 @@ export default function Movimientos({ goTo, inicial }) {
             {rCred && rCred.am.filter(c => !c.pago).length > 0 && <div style={{ marginTop: 10 }}><Field label="Cuota a pagar"><select value={form.cuotaN} onChange={e => sf('cuotaN', e.target.value)} style={sel}><option value="">— Selecciona —</option>{rCred.am.filter(c => !c.pago).slice(0, 12).map(c => <option key={c.n} value={c.n}>Cuota {c.n} · {fmtDate(c.fecha)} · {fmtCOP(c.total)}</option>)}</select></Field></div>}
             {cuotaSel && <div style={{ marginTop: 12, background: '#fff', borderRadius: 10, padding: 12, border: '1px solid #E7F5EE' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12 }}><span style={{ color: '#6E6E73' }}>Capital</span><b>{fmtCOP(cuotaSel.capital)}</b></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, borderBottom: '2px solid #4B1D9E', marginBottom: 8 }}><span style={{ color: '#6E6E73' }}>Interés</span><b>{fmtCOP(cuotaSel.interes)}</b></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, borderBottom: cuotaSel.seguro ? 'none' : '2px solid #4B1D9E', marginBottom: cuotaSel.seguro ? 0 : 8 }}><span style={{ color: '#6E6E73' }}>Interés</span><b>{fmtCOP(cuotaSel.interes)}</b></div>
+              {cuotaSel.seguro > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, borderBottom: '2px solid #4B1D9E', marginBottom: 8 }}><span style={{ color: '#6E6E73' }}>Seguro del crédito</span><b>{fmtCOP(cuotaSel.seguro)}</b></div>}
+              {esAnticipado(cuotaSel.fecha) && <div style={{ marginBottom: 8 }}><Aviso tipo="warn">Esta cuota vence el {fmtDate(cuotaSel.fecha)}: al registrar el pago se te pedirá el motivo del anticipo.</Aviso></div>}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6, marginBottom: 10 }}>
                 <Field label="Manejo"><input type="number" inputMode="numeric" value={form.manejo} onChange={e => sf('manejo', e.target.value)} style={inp} placeholder="0" /></Field>
                 <Field label="Mora"><input type="number" inputMode="numeric" value={form.mora} onChange={e => sf('mora', e.target.value)} style={inp} placeholder="0" /></Field>
-                <Field label="Seguros"><input type="number" inputMode="numeric" value={form.seguros} onChange={e => sf('seguros', e.target.value)} style={inp} placeholder="0" /></Field>
+                <Field label="Otros seg."><input type="number" inputMode="numeric" value={form.seguros} onChange={e => sf('seguros', e.target.value)} style={inp} placeholder="0" /></Field>
                 <Field label="Otros"><input type="number" inputMode="numeric" value={form.otros} onChange={e => sf('otros', e.target.value)} style={inp} placeholder="0" /></Field>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #138A5B', paddingTop: 8 }}><span style={{ fontWeight: 800, fontSize: 14 }}>TOTAL A PAGAR</span><span style={{ fontWeight: 800, fontSize: 14, color: '#138A5B' }}>{fmtCOP(totalCred)}</span></div>
@@ -128,7 +132,8 @@ export default function Movimientos({ goTo, inicial }) {
           {!esTraslado && <Field label="Vincular a rubro del presupuesto" full><select value={form.presupuesto_id || ''} onChange={e => sf('presupuesto_id', e.target.value || null)} style={sel}><option value="">— Sin vincular —</option>{db.presupuesto.filter(p => p.periodo === form.fecha.slice(0, 7) + '-01').map(p => <option key={p.id} value={p.id}>{p.concepto}</option>)}</select></Field>}
         </div>
         {!esPersonal && form.cuenta_id && duenoCuenta(ix.cta[form.cuenta_id]) && form.tipo !== 'Ingreso' && <div style={{ marginTop: 10 }}><Aviso tipo="info">Se registra en {espacio.nombre} y queda como <b>aporte de {nombreMiembro(duenoCuenta(ix.cta[form.cuenta_id]))}</b> en su espacio personal.</Aviso></div>}
-        <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={() => setModal(false)} /><SaveBtn onClick={save} disabled={!canSave}>{isCreditPay ? 'Registrar pago' : 'Registrar'}</SaveBtn></div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={() => setModal(false)} /><SaveBtn onClick={() => save()} disabled={!canSave}>{isCreditPay ? 'Registrar pago' : 'Registrar'}</SaveBtn></div>
+        {anticipo && cuotaSel && <MotivoAnticipo cuota={cuotaSel} onClose={() => setAnticipo(false)} onConfirm={m => { setAnticipo(false); save(m) }} />}
       </Modal>}
     </div>
   )

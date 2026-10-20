@@ -70,7 +70,7 @@ export function FaltaMigracion({ version }) {
     <div style={{ ...wrap, flexDirection: 'column', justifyContent: 'space-between' }}><Marca sub="Falta un paso en la base de datos." /><div style={card}>
       <div style={title}><Icon name="alert" size={24} style={{ color: T.ambar }} />Base de datos desactualizada</div>
       <div style={{ fontSize: 13, color: T.tinta, marginTop: 10, lineHeight: 1.6 }}>
-        Esta versión de la app necesita el esquema <b>v{version}</b>. En Supabase → <b>SQL Editor</b> ejecuta el archivo <code>supabase/migrations/0002_espacios.sql</code> del repositorio y vuelve a abrir la app. No se pierde ningún dato.
+        Esta versión de la app necesita el esquema <b>v{version}</b>. En Supabase → <b>SQL Editor</b> ejecuta, en orden, los archivos de <code>supabase/migrations/</code> que falten (hasta <code>000{version}_…sql</code>) del repositorio y vuelve a abrir la app. No se pierde ningún dato.
       </div>
       <div style={{ marginTop: 14 }}><button onClick={() => window.location.reload()} style={{ width: '100%', height: 46, background: T.morado, color: '#fff', border: 'none', borderRadius: 23, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Ya la ejecuté, reintentar</button></div>
       <button onClick={salir} style={{ background: 'none', border: 'none', color: T.gris, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, marginTop: 12, fontFamily: 'inherit' }}>Cerrar sesión</button>

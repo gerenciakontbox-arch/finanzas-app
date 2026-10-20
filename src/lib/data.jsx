@@ -6,7 +6,7 @@ import { supabase } from './supabase'
 import { useAuth } from './auth'
 import { TC } from './util'
 
-const TABLAS = ['categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'programado', 'programado_adjuntos', 'movimientos']
+const TABLAS = ['categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'programado', 'programado_adjuntos', 'movimientos']
 const Ctx = createContext(null)
 export const useData = () => useContext(Ctx)
 
@@ -79,6 +79,7 @@ export function DataProvider({ children }) {
       deudas: all.deudas.filter(x => x.espacio_id === e),
       tc_cargos: all.tc_cargos.filter(x => x.espacio_id === e),
       cuotas_pagadas: all.cuotas_pagadas.filter(x => x.espacio_id === e),
+      abonos_capital: (all.abonos_capital || []).filter(x => x.espacio_id === e),
       programado: all.programado.filter(x => x.espacio_id === e),
       programado_adjuntos: all.programado_adjuntos.filter(x => x.espacio_id === e),
       movimientos: all.movimientos.filter(x => x.espacio_id === e),

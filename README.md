@@ -6,7 +6,7 @@ App de finanzas personales con **espacios** compartidos (hogar, empresa). React 
 
 ### 1. Supabase
 1. Crea una cuenta en https://supabase.com y un proyecto nuevo (región **East US (N. Virginia)**, la más cercana a Colombia). Guarda la contraseña de la base de datos aunque la app no la usa.
-2. En el panel: **SQL Editor → New query**. Pega el contenido completo de `supabase/migrations/0001_schema.sql` y ejecuta (**Run**); luego haz lo mismo con `supabase/migrations/0002_espacios.sql`. Ambos son idempotentes: puedes volver a ejecutarlos.
+2. En el panel: **SQL Editor → New query**. Pega el contenido completo de `supabase/migrations/0001_schema.sql` y ejecuta (**Run**); luego haz lo mismo, en orden, con `0002_espacios.sql` y `0003_creditos_plan.sql`. Todos son idempotentes: puedes volver a ejecutarlos.
 3. En **Authentication → URL Configuration**:
    - *Site URL*: la URL de tu sitio en Netlify (por ejemplo `https://finanzas-quijano.netlify.app`).
    - *Redirect URLs*: agrega esa misma URL y `http://localhost:5173` (para desarrollo).
@@ -43,14 +43,20 @@ npm run build            # genera dist/
 ```
 
 ## Pruebas
-`test/e2e.mjs` recorre los flujos principales (44 verificaciones) contra un backend simulado en memoria (`test/mockSupabase.js`): espacios, cuentas habilitadas, aportes espejo, factura partida, privacidad entre miembros y entre hogares. Requiere Chromium de Playwright:
+`test/e2e.mjs` recorre los flujos principales (59 verificaciones) contra un backend simulado en memoria (`test/mockSupabase.js`): espacios, cuentas habilitadas, aportes espejo, factura partida, privacidad entre miembros y entre hogares. Requiere Chromium de Playwright:
 ```
 npx vite build -c test/vite.test.config.js && node test/e2e.mjs
 ```
-Los esquemas fueron validados contra Postgres 16 con RLS activo y tres usuarios: `test/schema.test.sql` (0001) y `test/schema2.test.sql` (migración 0002 sobre datos heredados):
+Los esquemas fueron validados contra Postgres 16 con RLS activo y tres usuarios: `test/schema.test.sql` (0001), `test/schema2.test.sql` (migración 0002 sobre datos heredados) y `test/schema3.test.sql` (0003: presupuesto → programado, créditos, depreciación; se ejecuta sobre la base que deja schema2):
 ```
-psql -h /tmp -p 5499 -U postgres -f test/schema2.test.sql
+psql -h /tmp -p 5499 -U postgres -f test/schema2.test.sql && psql -h /tmp -p 5499 -U postgres -f test/schema3.test.sql
 ```
+
+## Migración 0003 · créditos, depreciación y presupuesto → programado
+Supabase → **SQL Editor** → pega `supabase/migrations/0003_creditos_plan.sql` → **Run** (la app pide esquema v3). Qué agrega:
+- **Créditos**: sistema de cuota (*fija* o *abono constante a capital*, cuota decreciente), seguro mensual dentro de la cuota, **abono extraordinario a capital** (reduce plazo o reduce cuota; la tabla se recalcula hacia adelante y las cuotas pagadas no cambian) y **pago anticipado con motivo**: si faltan más de 5 días para el vencimiento, el pago exige elegir un motivo que queda en el movimiento.
+- **Activos**: depreciación lineal mensual con valor residual y vida útil de 2 a 10 años (inmuebles no deprecian). Para un activo comprado antes de usar la app: valor base = valor de mercado hoy, "deprecia desde" = hoy, vida útil = años que le quedan. El patrimonio usa el valor neto.
+- **Presupuesto → Programado**: un rubro se programa desde el ítem (botón **Programar**) o desde el CSV (`programar = sí`, `periodicidad`, `vencimiento`, y `periodo` MM/AAAA para cargar todo el año en un archivo). Nace una obligación recurrente vinculada; el rubro queda **bloqueado** (no se edita ni se marca pagado a mano) y se cierra al pagarlo desde Programado, que además deja listo y vinculado el rubro del mes siguiente (lo crea si no existe). *Omitir* libera el rubro; *Desprogramar* borra la ocurrencia pendiente y devuelve el rubro a Planificado.
 
 ## Actualizar a la versión de espacios (migración 0002)
 Si ya usabas la app con el esquema inicial (hogar único):

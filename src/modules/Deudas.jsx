@@ -1,79 +1,119 @@
 import { useState } from 'react'
 import { useData, useIndices } from '../lib/data'
 import { useAuth } from '../lib/auth'
-import { Kpi, Card, Icon, IcoText, Modal, Field, inp, sel, SaveBtn, CancelBtn, SmallBtn, PrimaryBtn, Aviso, useForm } from '../lib/ui'
+import { Kpi, Card, Icon, IcoText, Modal, Field, inp, sel, SaveBtn, CancelBtn, SmallBtn, PrimaryBtn, Aviso, useForm, T } from '../lib/ui'
 import MoverA from './MoverA'
-import { fmtCOP, fmtDate, today, cfFija, TC, TIPOS_DEUDA } from '../lib/util'
+import { fmtCOP, fmtDate, today, daysLeft, cfFija, TC, TIPOS_DEUDA } from '../lib/util'
 import { indicePagadas, resumenDeuda, resumenTarjeta } from '../lib/finanzas'
 import { parseMonto } from '../lib/csv'
+
+// R12 · pago anticipado: si faltan más de DIAS_ANTICIPO días para el vencimiento, se exige un motivo.
+export const DIAS_ANTICIPO = 5
+export const MOTIVOS_ANTICIPO = ['Adelanto de cuota', 'Corrección de fecha', 'Pago doble por viaje o ausencia', 'Otro']
+export const esAnticipado = fecha => daysLeft(fecha) > DIAS_ANTICIPO
+export const SISTEMAS = { fija: 'Cuota fija', capital: 'Cuota decreciente' }
+
+// Motivo para pagar una cuota antes de tiempo. Devuelve el texto final o null si se cancela.
+export function MotivoAnticipo({ cuota, onConfirm, onClose }) {
+  const [motivo, setMotivo] = useState(''); const [otro, setOtro] = useState('')
+  const texto = motivo === 'Otro' ? otro.trim() : motivo
+  return (
+    <Modal title="Pago anticipado" onClose={onClose}>
+      <Aviso tipo="warn">La cuota {cuota.n} vence el {fmtDate(cuota.fecha)} (faltan {daysLeft(cuota.fecha)} días). Para pagarla antes de tiempo elige el motivo; queda registrado en el movimiento.</Aviso>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
+        {MOTIVOS_ANTICIPO.map(m => <button key={m} onClick={() => setMotivo(m)} style={{ textAlign: 'left', padding: '11px 14px', borderRadius: 12, border: '1.5px solid', borderColor: motivo === m ? T.morado : T.divisor, background: motivo === m ? T.superficie : '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: T.tinta }}>{m}</button>)}
+        {motivo === 'Otro' && <input autoFocus value={otro} onChange={e => setOtro(e.target.value)} placeholder="Escribe el motivo" style={inp} />}
+      </div>
+      <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={onClose} /><SaveBtn disabled={!texto} onClick={() => onConfirm(texto)}>Pagar con este motivo</SaveBtn></div>
+    </Modal>
+  )
+}
 
 export default function Deudas({ goTo }) {
   const { db, all, insertar, actualizar, borrar, rpc, nombreCuenta, duenoCuenta, nombreMiembro } = useData(); const ix = useIndices(); const { esPersonal, userId, espacio } = useAuth()
   const [mover, setMover] = useState(null)
   const [open, setOpen] = useState(null); const [modal, setModal] = useState(null); const [showAll, setShowAll] = useState({})
+  const [anticipo, setAnticipo] = useState(null)   // { r, c } cuota que requiere motivo
+  const [abono, setAbono] = useState(null)         // crédito al que se abona
   const cuentasCaja = db.cuentas.filter(c => c.tipo !== TC)
-  const emptyD = { nombre: '', acreedor: '', tipo: 'Consumo', activo_id: null, cuenta_pago_id: cuentasCaja[0]?.id || null, capital_inicial: '', tasa_mensual: '', total_cuotas: '', fecha_primera_cuota: today(), estado: 'Activo', notas: '' }
+  const emptyD = { nombre: '', tipo: 'Consumo', sistema: 'fija', activo_id: null, cuenta_pago_id: cuentasCaja[0]?.id || null, capital_inicial: '', tasa_mensual: '', total_cuotas: '', seguro_mensual: '', fecha_primera_cuota: today(), estado: 'Activo', notas: '' }
   const [form, sf, setForm] = useForm(emptyD)
+  const [fa, sfa, setFa] = useForm({ fecha: today(), monto: '', cuenta_id: '', modo: 'plazo', motivo: '' })
   const idx = indicePagadas(db.cuotas_pagadas)
-  // Tarjetas visibles en este espacio: propias (personal) o habilitadas por miembros; sus compras se filtran por espacio
   const tarjetas = db.cuentas.filter(c => c.tipo === TC).map(c => resumenTarjeta(c, db.tc_cargos, idx))
-  const creditos = db.deudas.map(d => resumenDeuda(d, idx))
+  const creditos = db.deudas.map(d => resumenDeuda(d, idx, db.abonos_capital))
   const totalCred = creditos.filter(d => d.estado === 'Activo').reduce((a, d) => a + d.capitalPendiente, 0)
   const totalTC = tarjetas.reduce((a, r) => a + r.saldo, 0)
   const cargaMes = creditos.filter(d => d.estado === 'Activo').reduce((a, d) => a + d.cf, 0) + tarjetas.reduce((a, r) => a + r.proximaFactura, 0)
-  const cfEst = form.capital_inicial && form.total_cuotas ? Math.round(cfFija(parseMonto(form.capital_inicial) || 0, parseFloat(form.tasa_mensual) || 0, parseInt(form.total_cuotas) || 1)) : 0
+  const capF = parseMonto(form.capital_inicial) || 0, nF = parseInt(form.total_cuotas) || 0, tF = parseFloat(form.tasa_mensual) || 0, segF = parseMonto(form.seguro_mensual) || 0
+  const cfEst = capF && nF ? (form.sistema === 'capital' ? Math.round(capF / nF + capF * tF / 100) : Math.round(cfFija(capF, tF, nF))) + segF : 0
+  const totalEst = capF && nF ? (form.sistema === 'capital' ? Math.round(capF + capF * tF / 100 * (nF + 1) / 2) : Math.round(cfFija(capF, tF, nF) * nF)) + segF * nF : 0
 
   const saveD = async () => {
     if (!form.nombre || !form.capital_inicial || !form.total_cuotas) return
-    const row = { nombre: form.nombre, notas: form.notas, tipo: form.tipo, activo_id: form.activo_id || null, cuenta_pago_id: form.cuenta_pago_id || null, capital_inicial: parseMonto(form.capital_inicial), tasa_mensual: parseFloat(form.tasa_mensual) || 0, total_cuotas: parseInt(form.total_cuotas), fecha_primera_cuota: form.fecha_primera_cuota, estado: form.estado }
+    const row = { nombre: form.nombre, notas: form.notas, tipo: form.tipo, sistema: form.sistema || 'fija', activo_id: form.activo_id || null, cuenta_pago_id: form.cuenta_pago_id || null, capital_inicial: parseMonto(form.capital_inicial), tasa_mensual: parseFloat(form.tasa_mensual) || 0, total_cuotas: parseInt(form.total_cuotas), seguro_mensual: parseMonto(form.seguro_mensual) || 0, fecha_primera_cuota: form.fecha_primera_cuota, estado: form.estado }
     try { modal === 'add' ? await insertar('deudas', row) : await actualizar('deudas', modal.id, row); setModal(null) } catch (e) { alert(e.message) }
   }
-  const pagarC = async (d, c) => { try { await rpc('pagar_cuota_credito', { p_deuda: d.id, p_numero: c.n, p_fecha: today(), p_cuenta: d.cuenta_pago_id, p_capital: c.capital, p_interes: c.interes, p_extras: {} }) } catch (e) { alert(e.message) } }
+  const ejecutarPago = async (d, c, motivo = null) => { try { await rpc('pagar_cuota_credito', { p_deuda: d.id, p_numero: c.n, p_fecha: today(), p_cuenta: d.cuenta_pago_id, p_capital: c.capital, p_interes: c.interes, p_extras: {}, p_motivo: motivo, p_seguro: c.seguro || 0 }) } catch (e) { alert(e.message) } }
+  const pagarC = (d, c) => {
+    if (esAnticipado(c.fecha)) { setAnticipo({ r: d, c }); return }
+    if (window.confirm(`¿Registrar el pago de la cuota ${c.n} por ${fmtCOP(c.total)} desde ${ix.cta[d.cuenta_pago_id] ? nombreCuenta(ix.cta[d.cuenta_pago_id]) : 'la cuenta de pago'}?`)) ejecutarPago(d, c)
+  }
   const anularC = async c => { if (!window.confirm('¿Anular el pago de esta cuota? Se eliminará también el movimiento de caja.')) return; if (c.pago.movimiento_id) await borrar('movimientos', c.pago.movimiento_id); await borrar('cuotas_pagadas', c.pago.id) }
+  const abonar = async () => {
+    const monto = parseMonto(fa.monto) || 0; if (monto <= 0) return
+    if (monto > abono.capitalPendiente && !window.confirm('El abono supera el saldo pendiente. ¿Continuar?')) return
+    try { await rpc('abonar_capital', { p_deuda: abono.id, p_fecha: fa.fecha, p_monto: monto, p_cuenta: fa.cuenta_id || abono.cuenta_pago_id, p_modo: fa.modo, p_motivo: fa.motivo || null }); setAbono(null) } catch (e) { alert(e.message) }
+  }
+  const btnTabla = (bg, color, extra) => ({ fontSize: 10, background: bg, color, border: 'none', borderRadius: 10, padding: '4px 9px', cursor: 'pointer', fontWeight: 700, fontFamily: 'inherit', ...extra })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px' }}><Kpi icon="landmark" value={fmtCOP(totalCred)} label="Créditos" color="#B42318" /><Kpi icon="card" value={fmtCOP(totalTC)} label="Tarjetas" color="#4B1D9E" /><Kpi icon="calendar" value={fmtCOP(cargaMes)} label="Carga mes" color="#9A5B00" /></div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px' }}><Kpi icon="landmark" value={fmtCOP(totalCred)} label="Créditos" color={T.rojo} /><Kpi icon="card" value={fmtCOP(totalTC)} label="Tarjetas" color={T.morado} /><Kpi icon="calendar" value={fmtCOP(cargaMes)} label="Carga mes" color={T.ambar} /></div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}><h2 style={{ margin: 0, fontWeight: 800, fontSize: 16, color: '#1B1B1F' }}>Tarjetas <span style={{ color: '#6E6E73', fontWeight: 700, fontSize: 13 }}>{tarjetas.length}</span></h2>{esPersonal && <SmallBtn onClick={() => goTo('config')} bg="#F3F1F8" color="#6E6E73"><Icon name="plus" size={12} />Nueva en Config</SmallBtn>}</div>
-      {tarjetas.length === 0 && <Card style={{ textAlign: 'center', color: '#9A9AA0', fontSize: 12, border: '1px dashed #EBE9F1' }}>{esPersonal ? 'Crea una cuenta tipo "Tarjeta crédito" en Config y aparecerá aquí.' : 'Ningún miembro ha habilitado una tarjeta en este espacio. Cada quien lo hace desde su espacio personal (Config → Cuentas).'}</Card>}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}><h2 style={{ margin: 0, fontWeight: 800, fontSize: 16, color: T.tinta }}>Tarjetas <span style={{ color: T.gris, fontWeight: 700, fontSize: 13 }}>{tarjetas.length}</span></h2>{esPersonal && <SmallBtn onClick={() => goTo('config')} bg={T.superficie} color={T.gris}><Icon name="plus" size={12} />Nueva en Ajustes</SmallBtn>}</div>
+      {tarjetas.length === 0 && <Card style={{ textAlign: 'center', color: T.gris, fontSize: 12 }}>{esPersonal ? 'Crea una cuenta tipo "Tarjeta crédito" en Ajustes y aparecerá aquí.' : 'Ningún miembro ha habilitado una tarjeta en este espacio. Cada quien lo hace desde su espacio personal (Ajustes → Cuentas).'}</Card>}
       {tarjetas.map(r => <Tarjeta key={r.cuenta.id} r={r} esDueno={duenoCuenta(r.cuenta) === userId || r.cuenta.espacio_id === espacio.id} onMover={setMover} />)}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}><h2 style={{ margin: 0, fontWeight: 800, fontSize: 16, color: '#1B1B1F' }}>Créditos <span style={{ color: '#6E6E73', fontWeight: 700, fontSize: 13 }}>{creditos.length}</span></h2><PrimaryBtn onClick={() => { setForm(emptyD); setModal('add') }} style={{ padding: '8px 14px', fontSize: 13 }}><Icon name="plus" size={13} />Nuevo</PrimaryBtn></div>
-      {creditos.map(r => { const isOpen = open === r.id; const vT = showAll[r.id]; const rows = vT ? r.am : r.am.slice(Math.max(0, r.pagadas - 1), r.pagadas + 4); return (
-        <div key={r.id} style={{ background: '#F3F1F8', borderRadius: 16, overflow: 'hidden' }}>
-          <div onClick={() => setOpen(isOpen ? null : r.id)} style={{ padding: '14px 16px', cursor: 'pointer', background: r.estado === 'Activo' ? '#1B1B1F' : '#6E6E73', color: '#fff' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}><h2 style={{ margin: 0, fontWeight: 800, fontSize: 16, color: T.tinta }}>Créditos <span style={{ color: T.gris, fontWeight: 700, fontSize: 13 }}>{creditos.length}</span></h2><PrimaryBtn onClick={() => { setForm(emptyD); setModal('add') }} style={{ height: 36, fontSize: 13 }}><Icon name="plus" size={13} />Nuevo</PrimaryBtn></div>
+      {creditos.map(r => { const isOpen = open === r.id; const vT = showAll[r.id]; const rows = vT ? r.am : r.am.slice(Math.max(0, r.pagadas - 1), r.pagadas + 4); const anticipada = r.proxima && esAnticipado(r.proxima.fecha); return (
+        <div key={r.id} style={{ background: T.superficie, borderRadius: 16, overflow: 'hidden' }}>
+          <div onClick={() => setOpen(isOpen ? null : r.id)} style={{ padding: '14px 16px', cursor: 'pointer', background: r.estado === 'Activo' ? T.tinta : T.gris, color: '#fff' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name={r.tipo === 'Vehicular' ? 'car' : r.tipo === 'Hipotecario' ? 'home' : 'banknote'} size={12} />Crédito {r.tipo.toLowerCase()}{r.estado !== 'Activo' ? ' · cancelado' : ''}</div>
+                <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name={r.tipo === 'Vehicular' ? 'car' : r.tipo === 'Hipotecario' ? 'home' : 'banknote'} size={12} />Crédito {r.tipo.toLowerCase()} · {SISTEMAS[r.sistema] || SISTEMAS.fija}{r.estado !== 'Activo' ? ' · cancelado' : ''}</div>
                 <div style={{ fontWeight: 800, fontSize: 16, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.nombre}</div>
-                <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>{r.tasa_mensual}% m.v. · {r.total_cuotas} cuotas{r.activo_id ? ` · ${ix.act[r.activo_id]?.nombre}` : ''}</div>
+                <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>{r.tasa_mensual}% m.v. · {r.cuotasTotales} cuotas{+r.seguro_mensual > 0 ? ` · seguro ${fmtCOP(r.seguro_mensual)}/mes` : ''}{r.activo_id ? ` · ${ix.act[r.activo_id]?.nombre}` : ''}</div>
               </div>
               <Icon name={isOpen ? 'chevron-up' : 'chevron-down'} size={20} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 14 }}>
               <div><div style={{ fontSize: 11, opacity: 0.75 }}>Saldo capital</div><div style={{ fontWeight: 800, fontSize: 14 }}>{fmtCOP(r.capitalPendiente)}</div></div>
               <div><div style={{ fontSize: 11, opacity: 0.75 }}>Próxima cuota</div><div style={{ fontWeight: 800, fontSize: 14, color: '#FFD166' }}>{r.proxima ? fmtCOP(r.proxima.total) : '—'}</div>{r.proxima && <div style={{ fontSize: 11, opacity: 0.8 }}>{r.proxima.fecha < today() ? 'Vencida · ' : ''}{fmtDate(r.proxima.fecha)} · N° {r.proxima.n}</div>}</div>
-              <div><div style={{ fontSize: 11, opacity: 0.75 }}>Cuota fija</div><div style={{ fontWeight: 800, fontSize: 14 }}>{fmtCOP(r.cf)}</div><div style={{ fontSize: 11, opacity: 0.8 }}>{ix.cta[r.cuenta_pago_id] ? nombreCuenta(ix.cta[r.cuenta_pago_id]) : 'sin cuenta'}</div></div>
+              <div><div style={{ fontSize: 11, opacity: 0.75 }}>{r.sistema === 'capital' ? 'Abono a capital' : 'Cuota'}</div><div style={{ fontWeight: 800, fontSize: 14 }}>{fmtCOP(r.sistema === 'capital' ? (r.proxima?.capital || 0) : r.cf)}</div><div style={{ fontSize: 11, opacity: 0.8 }}>{ix.cta[r.cuenta_pago_id] ? nombreCuenta(ix.cta[r.cuenta_pago_id]) : 'sin cuenta'}</div></div>
             </div>
-            <div style={{ marginTop: 10 }}><div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 99, height: 6 }}><div style={{ height: 6, borderRadius: 99, background: '#fff', width: `${r.pct}%` }} /></div><div style={{ fontSize: 11, opacity: 0.8, marginTop: 3 }}>{r.pct}% amortizado · {r.pagadas}/{r.total_cuotas} cuotas pagadas · capital pagado {fmtCOP(r.capitalPagado)}</div></div>
+            <div style={{ marginTop: 10 }}><div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 99, height: 6 }}><div style={{ height: 6, borderRadius: 99, background: '#fff', width: `${Math.min(100, r.pct)}%` }} /></div><div style={{ fontSize: 11, opacity: 0.8, marginTop: 3 }}>{r.pct}% amortizado · {r.pagadas}/{r.cuotasTotales} cuotas pagadas{r.abonos.length ? ` · ${r.abonos.length} abono${r.abonos.length > 1 ? 's' : ''} ${fmtCOP(r.abonos.reduce((a, x) => a + +x.monto, 0))}` : ''}</div></div>
           </div>
-          {r.estado === 'Activo' && r.proxima && !isOpen && <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, padding: '10px 12px' }}><SmallBtn onClick={() => setOpen(r.id)} bg="#fff" color="#1B1B1F">Ver tabla</SmallBtn><SmallBtn onClick={() => { if (window.confirm(`¿Registrar el pago de la cuota ${r.proxima.n} por ${fmtCOP(r.proxima.total)} desde ${ix.cta[r.cuenta_pago_id] ? nombreCuenta(ix.cta[r.cuenta_pago_id]) : 'la cuenta de pago'}?`)) pagarC(r, r.proxima) }} bg="#4B1D9E" color="#fff"><Icon name="check" size={12} />Pagar cuota {r.proxima.n}</SmallBtn></div>}
-          {isOpen && <div style={{ borderTop: '1px solid #EBE9F1' }}>
-            <div style={{ padding: '8px 12px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><div style={{ fontWeight: 700, fontSize: 12, color: '#1B1B1F' }}>Tabla de amortización</div>
-              <div style={{ display: 'flex', gap: 6 }}><SmallBtn onClick={() => setShowAll(p => ({ ...p, [r.id]: !vT }))} bg="#EBE9F1" color="#6E6E73">{vT ? 'Menos' : 'Todas'}</SmallBtn><SmallBtn onClick={() => setMover({ tabla: 'deudas', id: r.id, nombre: r.nombre })} bg="#F3F1F8" color="#6E6E73"><Icon name="arrow-right" size={12} />Mover</SmallBtn><SmallBtn onClick={() => { setForm({ ...r, capital_inicial: String(r.capital_inicial), tasa_mensual: String(r.tasa_mensual), total_cuotas: String(r.total_cuotas) }); setModal(r) }} bg="#F3F1F8" color="#4B1D9E"><Icon name="pencil" size={13} /></SmallBtn><SmallBtn onClick={async () => { if (window.confirm('¿Eliminar este crédito y su historial de cuotas?')) await borrar('deudas', r.id) }} bg="#FBEAE7" color="#B42318"><Icon name="trash" size={13} /></SmallBtn></div></div>
-            <div style={{ overflowX: 'auto', padding: '0 8px 12px' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 380 }}>
-              <thead><tr style={{ background: '#EBE9F1' }}>{['N°', 'Fecha', 'Capital', 'Interés', 'Esperado', 'Pagado', 'Estado', ''].map(h => <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontSize: 9, fontWeight: 700, color: '#6E6E73' }}>{h}</th>)}</tr></thead>
-              <tbody>{rows.map(c => { const venc = !c.pago && c.fecha < today(); const pr = c.pago?.monto_pagado; const dif = pr != null ? +pr - c.total : null; return (
-                <tr key={c.n} style={{ borderBottom: '1px solid #EBE9F1', background: c.pago ? '#E7F5EE' : venc ? '#fff5f5' : '' }}>
-                  <td style={{ padding: '6px 8px', fontWeight: 700, color: '#4B1D9E' }}>{c.n}</td><td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{fmtDate(c.fecha)}</td>
-                  <td style={{ padding: '6px 8px', fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtCOP(c.capital)}</td><td style={{ padding: '6px 8px', color: '#9A9AA0', whiteSpace: 'nowrap' }}>{fmtCOP(c.interes)}</td>
+          {r.estado === 'Activo' && r.proxima && !isOpen && <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, padding: '10px 12px' }}><SmallBtn onClick={() => setOpen(r.id)} bg="#fff" color={T.tinta}>Ver tabla</SmallBtn><SmallBtn onClick={() => pagarC(r, r.proxima)} bg={anticipada ? '#fff' : T.morado} color={anticipada ? T.ambar : '#fff'}><Icon name={anticipada ? 'clock' : 'check'} size={12} />{anticipada ? `Cuota ${r.proxima.n} · vence ${fmtDate(r.proxima.fecha)}` : `Pagar cuota ${r.proxima.n}`}</SmallBtn></div>}
+          {isOpen && <div style={{ borderTop: `1px solid ${T.divisor}` }}>
+            <div style={{ padding: '10px 12px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}><div style={{ fontWeight: 700, fontSize: 12, color: T.tinta }}>Tabla de amortización</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {r.estado === 'Activo' && <SmallBtn onClick={() => { setFa({ fecha: today(), monto: '', cuenta_id: r.cuenta_pago_id || '', modo: 'plazo', motivo: '' }); setAbono(r) }} bg={T.morado} color="#fff"><Icon name="banknote" size={12} />Abonar a capital</SmallBtn>}
+                <SmallBtn onClick={() => setShowAll(p => ({ ...p, [r.id]: !vT }))} bg="#fff" color={T.gris}>{vT ? 'Menos' : 'Todas'}</SmallBtn><SmallBtn onClick={() => setMover({ tabla: 'deudas', id: r.id, nombre: r.nombre })} bg="#fff" color={T.gris}><Icon name="arrow-right" size={12} />Mover</SmallBtn><SmallBtn onClick={() => { setForm({ ...r, capital_inicial: String(r.capital_inicial), tasa_mensual: String(r.tasa_mensual), total_cuotas: String(r.total_cuotas), seguro_mensual: String(r.seguro_mensual || '') }); setModal(r) }} bg="#fff" color={T.morado}><Icon name="pencil" size={13} /></SmallBtn><SmallBtn onClick={async () => { if (window.confirm('¿Eliminar este crédito y su historial de cuotas?')) await borrar('deudas', r.id) }} bg="#fff" color={T.rojo}><Icon name="trash" size={13} /></SmallBtn></div></div>
+            {r.abonos.length > 0 && <div style={{ padding: '4px 12px 6px', fontSize: 11, color: T.gris }}>{r.abonos.map(a => <div key={a.id}>Abono a capital {fmtCOP(a.monto)} el {fmtDate(a.fecha)} · {a.modo === 'plazo' ? 'misma cuota, menos plazo' : 'mismo plazo, cuota menor'}{a.motivo ? ` · ${a.motivo}` : ''}</div>)}</div>}
+            <div style={{ overflowX: 'auto', padding: '0 8px 12px' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 420 }}>
+              <thead><tr style={{ background: T.divisor }}>{['N°', 'Fecha', 'Capital', 'Interés', +r.seguro_mensual > 0 ? 'Seguro' : null, 'Cuota', 'Pagado', 'Estado', ''].filter(h => h !== null).map(h => <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: T.gris }}>{h}</th>)}</tr></thead>
+              <tbody>{rows.map(c => { const venc = !c.pago && c.fecha < today(); const pr = c.pago?.monto_pagado; const dif = pr != null ? +pr - c.total : null; const ant = !c.pago && esAnticipado(c.fecha); return (
+                <tr key={c.n} style={{ borderBottom: `1px solid ${T.divisor}`, background: c.pago ? T.verdeFondo : venc ? T.rojoFondo : '' }}>
+                  <td style={{ padding: '6px 8px', fontWeight: 700, color: T.morado }}>{c.n}</td><td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{fmtDate(c.fecha)}</td>
+                  <td style={{ padding: '6px 8px', fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtCOP(c.capital)}</td><td style={{ padding: '6px 8px', color: T.gris, whiteSpace: 'nowrap' }}>{fmtCOP(c.interes)}</td>
+                  {+r.seguro_mensual > 0 && <td style={{ padding: '6px 8px', color: T.gris, whiteSpace: 'nowrap' }}>{fmtCOP(c.seguro)}</td>}
                   <td style={{ padding: '6px 8px', fontWeight: 700, whiteSpace: 'nowrap' }}>{fmtCOP(c.total)}</td>
-                  <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{pr != null ? <span style={{ fontWeight: 700, color: dif > 0 ? '#B42318' : dif < 0 ? '#138A5B' : '#1B1B1F' }}>{fmtCOP(pr)}</span> : <span style={{ color: '#D9D2EA' }}>—</span>}</td>
-                  <td style={{ padding: '6px 8px' }}>{c.pago ? <span style={{ color: '#0F6B47', fontSize: 11, fontWeight: 700 }}>✓ {fmtDate(c.pago.fecha_pago)}</span> : venc ? <span style={{ color: '#B42318', fontSize: 11, fontWeight: 700 }}>Vencida</span> : <span style={{ background: '#F3F1F8', color: '#6E6E73', padding: '1px 6px', borderRadius: 8, fontSize: 9 }}>Pend.</span>}</td>
-                  <td style={{ padding: '6px 8px' }}>{!c.pago ? <button onClick={() => pagarC(r, c)} style={{ fontSize: 9, background: '#4B1D9E', color: '#fff', border: 'none', borderRadius: 6, padding: '3px 7px', cursor: 'pointer', fontWeight: 700 }}>Pagar</button> : <button onClick={() => anularC(c)} style={{ fontSize: 9, background: '#F3F1F8', color: '#6E6E73', border: '1px solid #EBE9F1', borderRadius: 6, padding: '2px 6px', cursor: 'pointer' }}>Anular</button>}</td>
+                  <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{pr != null ? <span style={{ fontWeight: 700, color: dif > 0 ? T.rojo : dif < 0 ? T.verde : T.tinta }}>{fmtCOP(pr)}</span> : <span style={{ color: '#D9D2EA' }}>—</span>}</td>
+                  <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{c.pago ? <span style={{ color: T.verde, fontSize: 11, fontWeight: 700 }}>✓ {fmtDate(c.pago.fecha_pago)}</span> : venc ? <span style={{ color: T.rojo, fontSize: 11, fontWeight: 700 }}>Vencida</span> : <span style={{ color: T.gris, fontSize: 11 }}>Pendiente</span>}</td>
+                  <td style={{ padding: '6px 8px' }}>{!c.pago ? (r.estado === 'Activo' && (r.proxima?.n === c.n) ? <button onClick={() => pagarC(r, c)} title={ant ? 'Pago anticipado: pide motivo' : 'Pagar'} style={btnTabla(ant ? '#fff' : T.morado, ant ? T.ambar : '#fff', ant ? { border: `1px solid ${T.ambar}` } : {})}>{ant ? 'Anticipar' : 'Pagar'}</button> : null) : <button onClick={() => anularC(c)} style={btnTabla('#fff', T.gris, { border: `1px solid ${T.divisor}` })}>Anular</button>}</td>
                 </tr>) })}
-              {!vT && r.am.length > rows.length && <tr><td colSpan={8} style={{ padding: 8, textAlign: 'center', color: '#9A9AA0', fontSize: 10 }}>…{r.am.length - rows.length} más</td></tr>}</tbody>
+              {!vT && r.am.length > rows.length && <tr><td colSpan={9} style={{ padding: 8, textAlign: 'center', color: T.grisClaro, fontSize: 10 }}>…{r.am.length - rows.length} más</td></tr>}</tbody>
             </table></div>
           </div>}
         </div>) })}
@@ -82,22 +122,44 @@ export default function Deudas({ goTo }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <Field label="Nombre" full><input value={form.nombre} onChange={e => sf('nombre', e.target.value)} style={inp} /></Field>
           <Field label="Tipo"><select value={form.tipo} onChange={e => sf('tipo', e.target.value)} style={sel}>{TIPOS_DEUDA.map(x => <option key={x}>{x}</option>)}</select></Field>
+          <Field label="Sistema de cuota"><select value={form.sistema || 'fija'} onChange={e => sf('sistema', e.target.value)} style={sel}><option value="fija">Cuota fija</option><option value="capital">Abono fijo a capital (cuota decreciente)</option></select></Field>
           <Field label="Capital inicial"><input type="number" inputMode="numeric" value={form.capital_inicial} onChange={e => sf('capital_inicial', e.target.value)} style={inp} /></Field>
           <Field label="Tasa mensual (%)"><input type="number" inputMode="decimal" step="0.01" value={form.tasa_mensual} onChange={e => sf('tasa_mensual', e.target.value)} style={inp} /></Field>
           <Field label="Total cuotas"><input type="number" inputMode="numeric" value={form.total_cuotas} onChange={e => sf('total_cuotas', e.target.value)} style={inp} /></Field>
+          <Field label="Seguros mensuales (COP)"><input type="number" inputMode="numeric" value={form.seguro_mensual || ''} onChange={e => sf('seguro_mensual', e.target.value)} style={inp} placeholder="Vida + todo riesgo" /></Field>
           <Field label="Primera cuota"><input type="date" value={form.fecha_primera_cuota} onChange={e => sf('fecha_primera_cuota', e.target.value)} style={inp} /></Field>
           <Field label="Cuenta de pago"><select value={form.cuenta_pago_id || ''} onChange={e => sf('cuenta_pago_id', e.target.value || null)} style={sel}>{cuentasCaja.map(x => <option key={x.id} value={x.id}>{nombreCuenta(x)}</option>)}</select></Field>
           <Field label="Activo asociado"><select value={form.activo_id || ''} onChange={e => sf('activo_id', e.target.value || null)} style={sel}><option value="">— Ninguno —</option>{db.activos.map(x => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select></Field>
           <Field label="Estado"><select value={form.estado} onChange={e => sf('estado', e.target.value)} style={sel}><option>Activo</option><option>Cancelado</option></select></Field>
           <Field label="Notas" full><input value={form.notas || ''} onChange={e => sf('notas', e.target.value)} style={inp} /></Field>
         </div>
-        {cfEst > 0 && <div style={{ background: '#F3F1F8', borderRadius: 10, padding: '10px 14px', marginTop: 12, display: 'flex', gap: 20 }}><div><div style={{ fontSize: 10, color: '#4B1D9E', fontWeight: 700 }}>Cuota fija est.</div><div style={{ fontWeight: 800, fontSize: 15, color: '#4B1D9E' }}>{fmtCOP(cfEst)}</div></div><div><div style={{ fontSize: 10, color: '#4B1D9E', fontWeight: 700 }}>Total a pagar</div><div style={{ fontWeight: 800, fontSize: 15, color: '#B42318' }}>{fmtCOP(cfEst * (parseInt(form.total_cuotas) || 0))}</div></div></div>}
+        {cfEst > 0 && <div style={{ background: T.superficie, borderRadius: 12, padding: '10px 14px', marginTop: 12, display: 'flex', gap: 20 }}><div><div style={{ fontSize: 11, color: T.gris, fontWeight: 600 }}>{form.sistema === 'capital' ? 'Primera cuota est.' : 'Cuota est.'}{segF ? ' (con seguro)' : ''}</div><div style={{ fontWeight: 800, fontSize: 15, color: T.morado }}>{fmtCOP(cfEst)}</div></div><div><div style={{ fontSize: 11, color: T.gris, fontWeight: 600 }}>Total a pagar est.</div><div style={{ fontWeight: 800, fontSize: 15, color: T.rojo }}>{fmtCOP(totalEst)}</div></div></div>}
+        {modal !== 'add' && modal.pagadas > 0 && <div style={{ marginTop: 10 }}><Aviso tipo="info">Las {modal.pagadas} cuotas ya pagadas no cambian; la tabla se recalcula solo hacia adelante.</Aviso></div>}
         <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={() => setModal(null)} /><SaveBtn onClick={saveD}>Guardar</SaveBtn></div>
       </Modal>}
+
+      {abono && <Modal title={`Abono a capital · ${abono.nombre}`} onClose={() => setAbono(null)}>
+        <Aviso tipo="info">Saldo de capital pendiente: <b>{fmtCOP(abono.capitalPendiente)}</b>. El abono se registra como salida de caja y la tabla se recalcula desde la cuota {abono.pagadas + 1}.</Aviso>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
+          <Field label="Fecha"><input type="date" value={fa.fecha} onChange={e => sfa('fecha', e.target.value)} style={inp} /></Field>
+          <Field label="Monto (COP)"><input type="number" inputMode="numeric" autoFocus value={fa.monto} onChange={e => sfa('monto', e.target.value)} style={inp} /></Field>
+          <Field label="Cuenta de donde sale" full><select value={fa.cuenta_id || ''} onChange={e => sfa('cuenta_id', e.target.value)} style={sel}>{cuentasCaja.map(x => <option key={x.id} value={x.id}>{nombreCuenta(x)}</option>)}</select></Field>
+          <Field label="¿Qué se recalcula?" full>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[['plazo', 'Reducir plazo', 'Misma cuota, se acaba antes. Paga menos intereses.'], ['cuota', 'Reducir cuota', 'Mismo número de cuotas, cada una más baja.']].map(([k, l, d]) => <button key={k} onClick={() => sfa('modo', k)} style={{ textAlign: 'left', padding: '11px 14px', borderRadius: 12, border: '1.5px solid', borderColor: fa.modo === k ? T.morado : T.divisor, background: fa.modo === k ? T.superficie : '#fff', cursor: 'pointer', fontFamily: 'inherit', color: T.tinta }}><div style={{ fontWeight: 700, fontSize: 13 }}>{l}</div><div style={{ fontSize: 11, color: T.gris, marginTop: 2 }}>{d}</div></button>)}
+            </div>
+          </Field>
+          <Field label="Motivo (opcional)" full><input value={fa.motivo} onChange={e => sfa('motivo', e.target.value)} style={inp} placeholder="Prima, cesantías, venta…" /></Field>
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={() => setAbono(null)} /><SaveBtn onClick={abonar} disabled={!(parseMonto(fa.monto) > 0)}>Registrar abono</SaveBtn></div>
+      </Modal>}
+
+      {anticipo && <MotivoAnticipo cuota={anticipo.c} onClose={() => setAnticipo(null)} onConfirm={async m => { const { r, c } = anticipo; setAnticipo(null); await ejecutarPago(r, c, m) }} />}
       {mover && <MoverA item={mover} onClose={() => setMover(null)} />}
     </div>
   )
 }
+
 
 function Tarjeta({ r, esDueno, onMover }) {
   const { db, all, insertar, actualizar, borrar, rpc, nombreCuenta, espacioDe, duenoCuenta, nombreMiembro } = useData(); const ix = useIndices(); const { esPersonal, espacio } = useAuth()
