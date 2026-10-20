@@ -76,8 +76,8 @@ function Shell() {
   const inicio = tab === 'dashboard'
   const nombre = miembroActual?.nombre || '—'
   return (
-    <div style={{ minHeight: '100vh', background: '#fff', paddingBottom: 84 }}>
-      <div className="safe-top" style={{ background: T.morado, color: '#fff', padding: '0 20px', paddingBottom: inicio ? 0 : 18 }}>
+    <div style={{ minHeight: '100vh', background: '#fff', paddingBottom: 'calc(84px + env(safe-area-inset-bottom))' }}>
+      <div className="safe-top" style={{ background: T.morado, color: '#fff', paddingLeft: 20, paddingRight: 20, paddingBottom: inicio ? 0 : 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, paddingTop: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
             <button onClick={() => goTo('config')} aria-label="Mi perfil" style={{ width: 40, height: 40, borderRadius: 20, border: 'none', background: 'rgba(255,255,255,0.18)', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>{iniciales(nombre)}</button>
@@ -102,7 +102,7 @@ function Shell() {
           {vista === 'config' && <Config {...props} />}
         </div>
       )}
-      <nav aria-label="Secciones" className="safe-bot" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', padding: '10px 6px 0', zIndex: 100, boxShadow: '0 -8px 24px rgba(27,27,31,0.06)' }}>
+      <nav aria-label="Secciones" className="safe-bot" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', paddingTop: 10, paddingLeft: 6, paddingRight: 6, zIndex: 100, boxShadow: '0 -8px 24px rgba(27,27,31,0.06)' }}>
         {TABS.map(([k, icon, label]) => { const on = tab === k; return (
           <button key={k} onClick={() => { setTab(k); setArg(null) }} aria-current={on ? 'page' : undefined} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '2px 0 6px', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: on ? T.morado : T.gris, minWidth: 0 }}>
             <Icon name={icon} size={22} sw={on ? 2.2 : 2} />

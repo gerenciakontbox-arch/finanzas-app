@@ -3,9 +3,9 @@ import { useAuth } from '../lib/auth'
 import { Icon, inp, SaveBtn, Aviso, T } from '../lib/ui'
 
 const wrap = { minHeight: '100vh', background: T.morado, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 0 }
-const card = { background: '#fff', borderRadius: '28px 28px 0 0', padding: '28px 24px 40px', width: '100%', maxWidth: 480 }
+const card = { background: '#fff', borderRadius: '28px 28px 0 0', padding: '28px 24px', paddingBottom: 'calc(40px + env(safe-area-inset-bottom))', width: '100%', maxWidth: 480 }
 const title = { fontSize: 22, fontWeight: 900, color: T.tinta, letterSpacing: '-0.5px', display: 'flex', alignItems: 'center', gap: 10 }
-const Marca = ({ sub }) => (<div style={{ padding: '72px 24px 36px', color: '#fff', width: '100%', maxWidth: 480 }}><div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 30, fontWeight: 900, letterSpacing: '-1px' }}><Icon name="wallet" size={30} sw={2} />Akontapp</div><div style={{ fontSize: 14, opacity: 0.85, marginTop: 8, lineHeight: 1.5, maxWidth: 320 }}>{sub}</div></div>)
+const Marca = ({ sub }) => (<div style={{ padding: '72px 24px 36px', paddingTop: 'max(72px, calc(env(safe-area-inset-top) + 28px))', color: '#fff', width: '100%', maxWidth: 480 }}><div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 30, fontWeight: 900, letterSpacing: '-1px' }}><Icon name="wallet" size={30} sw={2} />Akontapp</div><div style={{ fontSize: 14, opacity: 0.85, marginTop: 8, lineHeight: 1.5, maxWidth: 320 }}>{sub}</div></div>)
 
 const esStandalone = () => typeof window !== 'undefined' && (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true)
 

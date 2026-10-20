@@ -79,7 +79,7 @@ export function Modal({ title, onClose, children }) {
           <span style={{ fontWeight: 800, fontSize: 17, color: '#1B1B1F', letterSpacing: '-0.2px' }}>{title}</span>
           <button onClick={onClose} aria-label="Cerrar" style={{ width: 32, height: 32, borderRadius: 16, background: '#F3F1F8', border: 'none', cursor: 'pointer', color: '#1B1B1F', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="x" size={16} sw={2.2} /></button>
         </div>
-        <div style={{ padding: '10px 20px 36px' }}>{children}</div>
+        <div style={{ padding: '10px 20px', paddingBottom: 'calc(36px + env(safe-area-inset-bottom))' }}>{children}</div>
       </div>
     </div>
   )
