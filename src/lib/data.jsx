@@ -3,16 +3,18 @@
 // CRUD con auditoría implícita (triggers), recarga reactiva y tiempo real.
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from './supabase'
+import { configurarEventos, track } from './eventos'
 import { useAuth } from './auth'
 import { TC } from './util'
 
-const TABLAS = ['categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'programado', 'programado_adjuntos', 'movimientos']
+const TABLAS = ['categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'programado', 'programado_adjuntos', 'movimientos', 'perfil_usuario', 'ofertas', 'senales_def']
 const Ctx = createContext(null)
 export const useData = () => useContext(Ctx)
 
 export function DataProvider({ children }) {
-  const { espacio, espacios, userId, listo, schemaOk, miembrosTodos } = useAuth()
+  const { espacio, espacios, userId, listo, schemaOk, miembrosTodos, consent } = useAuth()
   const [all, setAll] = useState(null)
+  useEffect(() => { configurarEventos({ userId, espacioId: espacio?.id || null, on: !!consent?.analitica }) }, [userId, espacio?.id, consent?.analitica])
   const [error, setError] = useState(null)
 
   const cargar = useCallback(async () => {
@@ -84,14 +86,15 @@ export function DataProvider({ children }) {
       programado_adjuntos: all.programado_adjuntos.filter(x => x.espacio_id === e),
       movimientos: all.movimientos.filter(x => x.espacio_id === e),
       entidades: [],
+      perfil_usuario: all.perfil_usuario || [], ofertas: all.ofertas || [], senales_def: all.senales_def || [],
     } : null
     return {
       db, all, error, recargar: cargar, espacioId: e, userId, espacioDe, cuentasDe, duenoCuenta, nombreCuenta, nombreMiembro, saldoCuenta,
-      insertar: async (t, row) => { const { data, error } = await supabase.from(t).insert({ espacio_id: e, ...row }).select().single(); if (error) throw error; await refrescar(t); if (t === 'movimientos') await refrescar('cuotas_pagadas'); return data },
-      insertarVarios: async (t, rows) => { const { data, error } = await supabase.from(t).insert(rows.map(r => ({ espacio_id: e, ...r }))).select(); if (error) throw error; await refrescar(t); return data },
+      insertar: async (t, row) => { const { data, error } = await supabase.from(t).insert({ espacio_id: e, ...row }).select().single(); if (error) throw error; track('accion', 'crear', { tabla: t }); await refrescar(t); if (t === 'movimientos') await refrescar('cuotas_pagadas'); return data },
+      insertarVarios: async (t, rows) => { const { data, error } = await supabase.from(t).insert(rows.map(r => ({ espacio_id: e, ...r }))).select(); if (error) throw error; track('accion', 'importar', { tabla: t, n: rows.length }); await refrescar(t); return data },
       actualizar: async (t, id, patch) => { const { error } = await supabase.from(t).update(patch).eq('id', id); if (error) throw error; await refrescar(t); if (t === 'movimientos') await refrescar('movimientos') },
       borrar: async (t, id) => { const { error } = await supabase.from(t).delete().eq('id', id); if (error) throw error; await cargar() },
-      rpc: async (fn, args) => { const { data, error } = await supabase.rpc(fn, args); if (error) throw error; await cargar(); return data },
+      rpc: async (fn, args) => { const { data, error } = await supabase.rpc(fn, args); if (error) throw error; track('accion', 'rpc', { fn }); await cargar(); return data },
       subirAdjunto: async (programadoId, file) => {
         const ruta = `${e}/${programadoId}/${Date.now()}-${file.name.replace(/[^\w.\-]/g, '_')}`
         const { error } = await supabase.storage.from('adjuntos').upload(ruta, file, { contentType: file.type })

@@ -5,9 +5,10 @@ import { Card, Icon, IcoText, Modal, Field, inp, sel, PBtn, SaveBtn, CancelBtn, 
 import { fmtCOP, fmtDate, today, TIPOS_CTA, TC, GRUPOS } from '../lib/util'
 import { toCSV, descargar } from '../lib/csv'
 import { TIPO_ICON, TIPO_LABEL } from '../App'
+import { Privacidad } from './Privacidad'
 import { soportado, configurado, permiso, esIOS, esStandalone, activar, desactivar, suscripcionActual, enviarPrueba } from '../lib/push'
 
-export default function Config() {
+export default function Config({ goTo }) {
   const [sec, setSec] = useState('espacios')
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -17,8 +18,9 @@ export default function Config() {
         <PBtn active={sec === 'categorias'} onClick={() => setSec('categorias')}><IcoText name="tag" size={13}>Categorías</IcoText></PBtn>
         <PBtn active={sec === 'avisos'} onClick={() => setSec('avisos')}><IcoText name="alert" size={13}>Avisos</IcoText></PBtn>
         <PBtn active={sec === 'datos'} onClick={() => setSec('datos')}><IcoText name="file" size={13}>Datos</IcoText></PBtn>
+        <PBtn active={sec === 'privacidad'} onClick={() => setSec('privacidad')}><IcoText name="shield" size={13}>Privacidad</IcoText></PBtn>
       </div>
-      {sec === 'espacios' && <Espacios />}{sec === 'cuentas' && <Cuentas />}{sec === 'categorias' && <Categorias />}{sec === 'avisos' && <Avisos />}{sec === 'datos' && <Datos />}
+      {sec === 'espacios' && <Espacios />}{sec === 'cuentas' && <Cuentas />}{sec === 'categorias' && <Categorias />}{sec === 'avisos' && <Avisos />}{sec === 'datos' && <Datos />}{sec === 'privacidad' && <Privacidad goTo={goTo} />}
     </div>
   )
 }

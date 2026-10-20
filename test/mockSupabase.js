@@ -9,9 +9,11 @@ const CATS = [['Arriendo', 'Fijo'], ['Servicios públicos', 'Fijo'], ['Internet'
 const CATS_EMP = [['Arriendo', 'Fijo'], ['Nómina', 'Fijo'], ['Honorarios', 'Variable'], ['Software y suscripciones', 'Fijo'], ['Impuestos', 'Provisión'], ['Cuota crédito', 'Amortización crédito'], ['Pago tarjeta crédito', 'Amortización crédito'], ['Ventas', 'Variable'], ['Otro', 'Variable']]
 
 export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}) {
-  const T = {}; const tablas = ['app_meta', 'espacios', 'espacio_miembros', 'perfiles', 'categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'programado', 'programado_adjuntos', 'movimientos', 'bitacora', 'push_suscripciones']
+  const T = {}; const tablas = ['app_meta', 'espacios', 'espacio_miembros', 'perfiles', 'categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'programado', 'programado_adjuntos', 'movimientos', 'bitacora', 'push_suscripciones', 'consentimientos', 'eventos', 'perfil_usuario', 'ofertas', 'senales_def', 'app_admins', 'accesos_operador']
   tablas.forEach(t => T[t] = [])
-  T.app_meta.push({ clave: 'schema_version', valor: '5' })
+  T.app_meta.push({ clave: 'schema_version', valor: '6' }); T.app_meta.push({ clave: 'politica_version', valor: '2026-10-20' })
+  T.senales_def.push({ codigo: 'creditos_multiples', nombre: 'Varios créditos activos', descripcion: 'Tienes dos o más créditos activos.', servicio: 'Reestructuración y optimización de deuda', activa: true }, { codigo: 'activos_sin_cobertura', nombre: 'Activos sin seguro registrado', descripcion: 'Tienes vehículos o inmuebles sin un seguro programado.', servicio: 'Revisión de coberturas', activa: true })
+  T.app_admins.push({ user_id: 'u-andres', nombre: 'Andrés (operador)' })
   let session = null; const listeners = []
   const me = () => session?.user?.id
   const misEspacios = (u = me()) => T.espacio_miembros.filter(m => m.user_id === u).map(m => m.espacio_id)
@@ -36,12 +38,16 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
   const catEnUso = c => T.movimientos.some(m => m.categoria_id === c) || T.presupuesto.some(p => p.categoria_id === c) || T.programado.some(p => p.categoria_id === c) || T.tc_cargos.some(p => p.categoria_id === c)
 
   // ── visibilidad (RLS) ──
+  const consiente = (u, f) => { const rows = T.consentimientos.filter(c => c.user_id === u && c.finalidad === f); return rows.length ? !!rows[rows.length - 1].aceptado : false }
   const visible = (t, r) => {
     const mine = misEspacios()
     if (t === 'app_meta') return true
     if (t === 'espacios') return mine.includes(r.id)
     if (t === 'perfiles') return r.user_id === me()
-    if (t === 'push_suscripciones') return r.user_id === me()
+    if (t === 'push_suscripciones' || t === 'consentimientos' || t === 'ofertas' || t === 'app_admins') return r.user_id === me()
+    if (t === 'perfil_usuario') return r.user_id === me() && consiente(me(), 'perfil')
+    if (t === 'senales_def') return true
+    if (t === 'eventos' || t === 'accesos_operador') return false
     if (t === 'espacio_miembros') return mine.includes(r.espacio_id)
     if (t === 'cuentas') return mine.includes(r.espacio_id) || T.cuentas_espacio.some(x => x.cuenta_id === r.id && mine.includes(x.espacio_id))
     if (t === 'cuentas_espacio') return mine.includes(r.espacio_id) || mine.includes(T.cuentas.find(c => c.id === r.cuenta_id)?.espacio_id)
@@ -71,16 +77,19 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
   const q = (t) => {
     const st = { filters: [], op: 'select', payload: null, single: false, maybe: false }
     const run = () => {
-      let rows = T[t].filter(r => st.filters.every(([k, v]) => String(r[k]) === String(v))).filter(r => visible(t, r))
+      let rows = T[t].filter(r => st.filters.every(([k, v]) => String(r[k]) === String(v))).filter(r => !st.inF || st.inF[1].map(String).includes(String(r[st.inF[0]]))).filter(r => !st.lte || String(r[st.lte[0]]) <= String(st.lte[1])).filter(r => visible(t, r))
+      if (st.order) { const [k, asc] = st.order; rows = [...rows].sort((a, b) => (String(a[k] ?? '') < String(b[k] ?? '') ? -1 : String(a[k] ?? '') > String(b[k] ?? '') ? 1 : 0) * (asc ? 1 : -1)) }
+      if (st.op === 'upsert') { const arr = Array.isArray(st.payload) ? st.payload : [st.payload]; const out = arr.map(p => { const ex = T[t].find(r => st.onConflict.every(k => String(r[k]) === String(p[k]))); if (ex) { Object.assign(ex, p); return ex } const n = { id: uid(), creado_en: now(), ...p }; T[t].push(n); return n }); return Array.isArray(st.payload) ? out : out[0] }
       if (st.op === 'insert') {
         const arr = Array.isArray(st.payload) ? st.payload : [st.payload]
+        if (t === 'eventos' && !consiente(me(), 'analitica')) throw new Error('new row violates row-level security policy for table "eventos"')
         const DEF = { programado: () => ({ estado: 'Pendiente', serie_id: uid(), ficha_valores: {} }), movimientos: () => ({ origen: 'manual', desglose: {} }), cuentas: () => ({ activo: true }), categorias: () => ({ grupo: 'Variable', afecta_caja: true, activa: true }), presupuesto: () => ({ estado: 'Planificado' }), deudas: () => ({ estado: 'Activo', tasa_mensual: 0 }) }
         const out = arr.map(r => {
           const row = { id: uid(), creado_por: me(), creado_en: now(), actualizado_por: me(), actualizado_en: now(), ...(DEF[t] ? DEF[t]() : {}), ...r }
           if (t === 'movimientos') { if (row.espejo_de) throw new Error('new row violates row-level security policy for table "movimientos"'); row.pagador_id = duenoCuenta(row.cuenta_id) || row.pagador_id || null; if (row.tipo === 'Transferencia') { row.subtipo ||= 'traslado'; if (row.subtipo === 'traslado' && !row.cuenta_destino_id) throw new Error('Un traslado necesita cuenta destino') } }
           if (t === 'categorias' && tipoEsp(row.espacio_id) !== 'personal' && !esAdmin(row.espacio_id)) throw new Error('Solo un administrador del espacio puede modificar las categorías')
           if (t === 'cuentas' && T.cuentas.some(c => c.espacio_id === row.espacio_id && c.nombre === row.nombre)) throw new Error('duplicate key value violates unique constraint "cuentas_espacio_id_nombre_key"')
-          if (!visible(t, row)) throw new Error('new row violates row-level security policy for table "' + t + '"'); if (t === 'cuentas') setDueno(row); T[t].push(row)
+          if (!(t === 'eventos' ? row.user_id === me() : visible(t, row))) throw new Error('new row violates row-level security policy for table "' + t + '"'); if (t === 'cuentas') setDueno(row); T[t].push(row)
           if (t === 'movimientos') sincronizarEspejos(row)
           return row
         })
@@ -104,7 +113,8 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
     }
     const fin = () => { try { let d = run(); if (st.single || st.maybe) d = Array.isArray(d) ? (d[0] ?? null) : d; if (st.single && d == null) return { data: null, error: { message: 'no rows' } }; return { data: d, error: null } } catch (e) { return { data: null, error: { message: e.message } } } }
     const b = {
-      select() { return b }, eq(k, v) { st.filters.push([k, v]); return b },
+      select() { return b }, eq(k, v) { st.filters.push([k, v]); return b }, order(k, o) { st.order = [k, o?.ascending !== false]; return b }, in(k, vs) { st.inF = [k, vs]; return b }, lte(k, v) { st.lte = [k, v]; return b },
+      upsert(p, o) { st.op = 'upsert'; st.payload = p; st.onConflict = (o?.onConflict || 'id').split(','); return b },
       insert(p) { st.op = 'insert'; st.payload = p; return b }, update(p) { st.op = 'update'; st.payload = p; return b }, delete() { st.op = 'delete'; return b },
       single() { st.single = true; return b }, maybeSingle() { st.maybe = true; return b },
       then(res, rej) { return Promise.resolve(fin()).then(res, rej) },
@@ -125,6 +135,13 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
   const liberarPresupuesto = o => { if (!o.presupuesto_id) return; const pr = T.presupuesto.find(p => p.id === o.presupuesto_id && p.programado_id === o.id); if (pr) Object.assign(pr, { estado: 'Planificado', programado_id: null }) }
 
   const rpcs = {
+    registrar_consentimientos: ({ p, p_version, p_user_agent }) => { for (const [k, v] of Object.entries(p)) { if (!['servicio', 'analitica', 'perfil', 'comercial'].includes(k)) throw new Error('Finalidad desconocida: ' + k); T.consentimientos.push({ id: uid(), user_id: me(), finalidad: k, aceptado: !!v, version: p_version, user_agent: p_user_agent, creado_en: now() }) } if (p.perfil === false) T.perfil_usuario = T.perfil_usuario.filter(x => x.user_id !== me()); if (p.comercial === false) T.ofertas = T.ofertas.filter(x => !(x.user_id === me() && x.estado === 'mostrada')); if (p.analitica === false) T.eventos = T.eventos.filter(x => x.user_id !== me()); return rpcs.mis_consentimientos() },
+    mis_consentimientos: () => { const out = {}; for (const c of T.consentimientos.filter(c => c.user_id === me())) out[c.finalidad] = c.aceptado; return out },
+    eliminar_mi_cuenta: () => { const u = me(); T.espacios.filter(e => e.tipo === 'personal' && e.dueno_id === u).forEach(e => { for (const t of tablas) if (t !== 'espacios' && T[t].length && 'espacio_id' in (T[t][0] || {})) T[t] = T[t].filter(r => r.espacio_id !== e.id) }); T.espacios = T.espacios.filter(e => !(e.tipo === 'personal' && e.dueno_id === u)); T.espacio_miembros = T.espacio_miembros.filter(m => m.user_id !== u); T.espacios = T.espacios.filter(e => e.tipo === 'personal' || T.espacio_miembros.some(m => m.espacio_id === e.id)); T.perfiles = T.perfiles.filter(p => p.user_id !== u); T.consentimientos = T.consentimientos.filter(c => c.user_id !== u) },
+    operador_resumen: () => { if (!T.app_admins.some(a => a.user_id === me())) throw new Error('Solo el operador'); T.accesos_operador.push({ admin_id: me(), accion: 'resumen', creado_en: now() }); const users = new Set(T.perfiles.map(p => p.user_id)); return { usuarios: users.size, activos_7d: new Set(T.eventos.map(e => e.user_id)).size, activos_30d: new Set(T.eventos.map(e => e.user_id)).size, consentimientos: {}, espacios: {}, perfiles: T.perfil_usuario.length, senales: {}, ofertas: {}, pantallas_30d: {} } },
+    operador_perfiles: () => { if (!T.app_admins.some(a => a.user_id === me())) throw new Error('Solo el operador'); return T.perfil_usuario.filter(p => consiente(p.user_id, 'comercial')).map(p => ({ codigo: p.codigo, indicadores: p.indicadores, senales: p.senales, calculado_en: p.calculado_en, ofertas: T.ofertas.filter(o => o.user_id === p.user_id).map(o => ({ senal: o.senal, estado: o.estado, resultado: o.resultado })) })) },
+    operador_identificar: ({ p_codigo, p_motivo }) => { if (!T.app_admins.some(a => a.user_id === me())) throw new Error('Solo el operador'); if (!p_motivo?.trim()) throw new Error('Indica el motivo de la consulta'); const p = T.perfil_usuario.find(x => x.codigo === p_codigo); if (!p) throw new Error('Perfil no encontrado'); if (!consiente(p.user_id, 'comercial')) throw new Error('El titular no autorizó la finalidad comercial'); if (!T.ofertas.some(o => o.user_id === p.user_id && ['tocada', 'aceptada', 'convertida'].includes(o.estado))) throw new Error('El titular aún no ha respondido a ninguna oferta; no procede el contacto'); T.accesos_operador.push({ admin_id: me(), accion: 'identificar', perfil_codigo: p_codigo, motivo: p_motivo, creado_en: now() }); return { codigo: p_codigo, email: p.user_id + '@test.co', nombre: T.perfiles.find(x => x.user_id === p.user_id)?.nombre } },
+    operador_resultado: ({ p_codigo, p_senal, p_resultado }) => { const p = T.perfil_usuario.find(x => x.codigo === p_codigo); if (!p) throw new Error('Perfil no encontrado'); T.ofertas.filter(o => o.user_id === p.user_id && o.senal === p_senal).forEach(o => { o.resultado = p_resultado; if (p_resultado === 'venta') o.estado = 'convertida' }) },
     asegurar_personal: ({ p_nombre } = {}) => personalDe(me(), p_nombre),
     crear_espacio: ({ p_tipo, p_nombre, p_nombre_miembro }) => {
       personalDe(me(), p_nombre_miembro)

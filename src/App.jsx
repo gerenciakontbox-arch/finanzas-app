@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { configurado } from './lib/supabase'
 import { AuthProvider, useAuth, SCHEMA_VERSION } from './lib/auth'
 import { DataProvider, useData } from './lib/data'
@@ -11,13 +11,16 @@ import Deudas from './modules/Deudas'
 import Activos from './modules/Activos'
 import Programado from './modules/Programado'
 import Config from './modules/Config'
+import { Autorizaciones, MiPerfil, Operador } from './modules/Privacidad'
+import { POLITICA_VERSION } from './legal/politica'
+import { track } from './lib/eventos'
 
 // 5 secciones: Plan agrupa Presupuesto + Programado; Más agrupa Activos + Ajustes.
 const TABS = [['dashboard', 'home', 'Inicio'], ['movimientos', 'arrows', 'Movimientos'], ['plan', 'clock', 'Plan'], ['deudas', 'card', 'Deudas'], ['activos', 'landmark', 'Activos'], ['config', 'gear', 'Ajustes']]
 const PADRE = { presupuesto: 'plan', programado: 'plan' }
 export const TIPO_ICON = { personal: 'user', hogar: 'home', empresa: 'landmark' }
 export const TIPO_LABEL = { personal: 'Personal', hogar: 'Hogar', empresa: 'Empresa' }
-const TITULO = { movimientos: 'Movimientos', plan: 'Plan', deudas: 'Deudas', activos: 'Activos', config: 'Ajustes' }
+const TITULO = { movimientos: 'Movimientos', plan: 'Plan', deudas: 'Deudas', activos: 'Activos', config: 'Ajustes', perfil: 'Mi perfil', operador: 'Operador' }
 
 function Cargando({ texto = 'Cargando…' }) {
   return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', flexDirection: 'column', gap: 14, background: T.morado, color: '#fff' }}><Icon name="wallet" size={40} sw={1.6} /><div style={{ fontWeight: 600, fontSize: 14, opacity: 0.85 }}>{texto}</div></div>
@@ -58,16 +61,19 @@ function Segmento({ value, onChange, opciones }) {
 }
 
 function Shell() {
-  const { session, listo, schemaOk, espacio, miembroActual, user } = useAuth()
+  const { session, listo, schemaOk, espacio, miembroActual, user, consent, esOperador } = useAuth()
   const { db, error } = useData()
   const ir = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('ir') : null  // deep link desde un aviso: /?ir=programado
-  const [tab, setTab] = useState(ir && PADRE[ir] ? PADRE[ir] : ir && TABS.some(t => t[0] === ir) ? ir : 'dashboard')
+  const [tab, setTab] = useState(ir && PADRE[ir] ? PADRE[ir] : ir && (TABS.some(t => t[0] === ir) || ir === 'perfil' || ir === 'operador') ? ir : 'dashboard')
   const [sub, setSub] = useState({ plan: ir === 'programado' ? 'programado' : 'presupuesto' })
   const [arg, setArg] = useState(null)
+  const vistaActual = tab === 'plan' ? sub.plan : tab
+  useEffect(() => { if (listo && consent?.analitica) track('pantalla', vistaActual) }, [vistaActual, listo, consent?.analitica])
   if (session === undefined) return <Cargando />
   if (!session) return <Login />
   if (!listo) return <Cargando texto="Preparando tu espacio…" />
   if (schemaOk === false) return <FaltaMigracion version={SCHEMA_VERSION} />
+  if (!consent.servicio || consent.version !== POLITICA_VERSION) return <Autorizaciones />
   if (error) return <Cargando texto={'Error cargando datos: ' + error} />
   if (!espacio || !db) return <Cargando texto="Cargando…" />
   const autoNombre = miembroActual && user?.email && miembroActual.nombre === user.email.split('@')[0]
@@ -81,7 +87,7 @@ function Shell() {
       <div className="safe-top" style={{ background: T.morado, color: '#fff', paddingLeft: 20, paddingRight: 20, paddingBottom: inicio ? 0 : 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, paddingTop: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-            <button onClick={() => goTo('config')} aria-label="Mi perfil" style={{ width: 40, height: 40, borderRadius: 20, border: 'none', background: 'rgba(255,255,255,0.18)', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>{iniciales(nombre)}</button>
+            <button onClick={() => goTo('perfil')} aria-label="Mi perfil" style={{ width: 40, height: 40, borderRadius: 20, border: 'none', background: 'rgba(255,255,255,0.18)', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>{iniciales(nombre)}</button>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inicio ? `Hola, ${nombre.split(' ')[0]}` : TITULO[tab]}</div>
               <div style={{ fontSize: 12, opacity: 0.8, marginTop: 1 }}>{espacio.tipo === 'personal' ? 'Espacio personal' : `${espacio.nombre} · ${TIPO_LABEL[espacio.tipo]}`}</div>
@@ -100,6 +106,8 @@ function Shell() {
           {vista === 'activos' && <Activos {...props} />}
           {vista === 'programado' && <Programado {...props} />}
           {vista === 'config' && <Config {...props} />}
+          {vista === 'perfil' && <MiPerfil {...props} />}
+          {vista === 'operador' && (esOperador ? <Operador {...props} /> : <Config {...props} />)}
         </div>
       )}
       <nav aria-label="Secciones" className="safe-bot" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', paddingTop: 10, paddingLeft: 6, paddingRight: 6, zIndex: 100, boxShadow: '0 -8px 24px rgba(27,27,31,0.06)' }}>

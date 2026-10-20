@@ -4,6 +4,7 @@ import { fmtCOP, fmtDate, today, addDays, daysLeft, GRUPOS, TC, primeroDelMes } 
 import { deudaTotal, presupuestoConEjecucion, resumenTarjeta, indicePagadas, aportesPorEspacio, aportesPorMiembro, aportesPlanificados } from '../lib/finanzas'
 import { useAuth } from '../lib/auth'
 import { TIPO_ICON } from '../App'
+import { OfertaInicio } from './Privacidad'
 
 const MES_LARGO = d => d.toLocaleDateString('es-CO', { month: 'long' })
 
@@ -75,6 +76,7 @@ export default function Dashboard({ goTo }) {
         <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12, fontWeight: 600, color: T.gris }}>Salió en {mesNombre}</div><div style={{ fontSize: 20, fontWeight: 800, color: T.tinta, marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>− {fmtCOP(sal + totAportes).replace('$', '').trim()}</div>{esPersonal && totAportes > 0 && <div style={{ fontSize: 11, color: T.gris, marginTop: 2 }}>incluye aportes {fmtCOP(totAportes)}</div>}</div>
       </div>
 
+      <OfertaInicio goTo={goTo} />
       {totalP > 0 && <Seccion titulo="Presupuesto del mes" extra={`${Math.round(totalE / totalP * 100)}% ejecutado`}>
         <div style={{ marginTop: 10, height: 8, borderRadius: 4, background: T.superficie, overflow: 'hidden' }}><div style={{ width: `${Math.min(100, totalE / totalP * 100)}%`, height: '100%', background: totalE > totalP ? T.rojo : T.morado }} /></div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 12, color: T.gris }}><span>Ejecutado <b style={{ color: T.tinta }}>{fmtCOP(totalE)}</b></span><span>de <b style={{ color: T.tinta }}>{fmtCOP(totalP)}</b></span></div>

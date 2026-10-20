@@ -22,7 +22,8 @@ const fillLabel = async (label, v) => { const el = page.locator(`label:has-text(
 const selectLabel = async (label, v) => { const el = page.locator(`label:has-text("${label}")`).first().locator('xpath=following-sibling::select'); await el.selectOption({ label: v }) }
 const plusBtn = async () => { await page.locator('div:has(> button[title="Importar CSV"]) > button').last().click(); await wait(150) }
 const cambiarEspacio = async nombre => { await page.locator('button[aria-label="Cambiar de espacio"]').click(); await wait(100); await page.locator('[data-menu="espacios"] button', { hasText: nombre }).first().click(); await wait(400) }
-const loginAs = async (uid, mail) => { await DB(() => window.__sb._logout()); await wait(200); await page.evaluate(([u, m]) => window.__sb._login(u, m), [uid, mail]); await wait(500) }
+const aceptarPolitica = async (opts = {}) => { if (!/Tus datos, tus reglas/.test(await T())) return false; if (opts.comercial) await page.locator('[role=switch]').nth(3).click(); if (opts.sinAnalitica) await page.locator('[role=switch]').nth(1).click(); await submit('Aceptar y continuar'); await wait(400); return true }
+const loginAs = async (uid, mail, opts) => { await DB(() => window.__sb._logout()); await wait(200); await page.evaluate(([u, m]) => window.__sb._login(u, m), [uid, mail]); await wait(500); await aceptarPolitica(opts) }
 
 await page.goto('http://localhost:4177/'); await wait(400)
 ok('Pantalla de login (Akontapp)', /Enviarme el código por correo/.test(await T()) && /Akontapp/.test(await T()))
@@ -31,6 +32,11 @@ ok('Pide el código del correo', /código numérico/.test(await T()))
 await page.fill('input[inputmode=numeric]', '999999'); await click('button', { hasText: 'Entrar con el código' }); await wait(200)
 ok('Código inválido rechazado', /Código inválido o vencido/.test(await T()))
 await page.fill('input[inputmode=numeric]', '123456'); await click('button', { hasText: 'Entrar con el código' }); await wait(500)
+ok('Primer ingreso: pantalla de autorizaciones (4 finalidades, servicio obligatoria)', /Tus datos, tus reglas/.test(await T()) && (await page.locator('[role=switch]').count()) === 4 && /necesaria/.test(await T()))
+await page.screenshot({ path: 'test/shot-autorizaciones.png' }); await page.locator('button', { hasText: 'Leer la política completa' }).click(); await wait(150); ok('Política completa visible (Ley 1581, responsable, derechos)', /Ley 1581 de 2012/.test(await T()) && /KONTBOX S.A.S./.test(await T())); await page.locator('button[aria-label="Cerrar"]').click(); await wait(150)
+await aceptarPolitica({ comercial: true })
+const cons0 = await DB(() => window.__sb._T.consentimientos.filter(c => c.user_id === 'u-andres').map(c => c.finalidad + ':' + c.aceptado).sort())
+ok('Autorizaciones registradas con versión de política', JSON.stringify(cons0) === JSON.stringify(['analitica:true', 'comercial:true', 'perfil:true', 'servicio:true']))
 ok('Entra directo al espacio personal (sin onboarding) y pide el nombre', /Espacio personal/.test(await T()) && /¿Cómo te llamas\?/.test(await T()) && /Anotar gasto/.test(await T()))
 await page.fill('input[placeholder="Ej. Andrés"]', 'Andrés'); await click('button', { hasText: 'Guardar' }); await wait(300)
 ok('Nombre guardado en cabecera', /Hola, Andrés/.test(await T()) && !/¿Cómo te llamas\?/.test(await T()))
@@ -207,6 +213,45 @@ await page.screenshot({ path: 'test/shot-presup-prog.png', fullPage: true })
 
 await tab('Config'); await click('button', { hasText: 'Avisos' }); ok('Ajustes → Avisos: sección de avisos push', /Avisos de vencimientos/.test(await T()) && /7:00/.test(await T()))
 
+// ===== Lote 5 · perfil, ofertas, operador, privacidad =====
+await cambiarEspacio('Personal'); await wait(8600)   // los eventos se envían por lotes cada 8 s
+st = await DB(() => window.__sb._T.eventos.filter(e => e.user_id === 'u-andres').map(e => e.tipo))
+ok('Eventos de uso registrados con finalidad analítica (pantallas y acciones)', st.includes('pantalla') && st.includes('accion'))
+// perfil calculado "por la tarea nocturna" (se simula) con una señal y su oferta
+await DB(() => { const T = window.__sb._T; T.perfil_usuario.push({ user_id: 'u-andres', codigo: 'U-TEST01', indicadores: { salud: 72, salud_explicacion: 'Puntualidad 20/30 · presupuesto 25/25 · carga de deuda 15/25 · registro 5/10 · patrimonio 10/10.', puntualidad_pct: 67, creditos_activos: 2, patrimonio_neto: 35600000 }, senales: ['creditos_multiples'], calculado_en: new Date().toISOString() }); T.ofertas.push({ id: 'of1', user_id: 'u-andres', senal: 'creditos_multiples', estado: 'mostrada', creado_en: new Date().toISOString() }) })
+await cambiarEspacio('Casa Quijano'); await cambiarEspacio('Personal'); await tab('Inicio')
+ok('Inicio muestra la oferta de Kontbox (finalidad comercial aceptada)', /Kontbox puede ayudarte/.test(await T()) && /Reestructuración/.test(await T()))
+await click('div:has-text("Kontbox puede ayudarte") >> nth=-1'); await wait(300)
+await page.screenshot({ path: 'test/shot-mi-perfil.png', fullPage: true })
+ok('Tocar la oferta abre Mi perfil con código, salud y situaciones', /Mi perfil/.test(await T()) && /U-TEST01/.test(await T()) && /72/.test(await T()) && /Varios créditos activos/.test(await T()))
+st = await DB(() => window.__sb._T.ofertas[0].estado); ok('Oferta pasa a "tocada"', st === 'tocada')
+await click('button', { hasText: 'Me interesa, que me contacten' }); await wait(300)
+st = await DB(() => window.__sb._T.ofertas[0].estado); ok('Oferta aceptada por el usuario', st === 'aceptada' && /Kontbox te escribirá/.test(await T()))
+// operador (Andrés tiene rol en el mock)
+await tab('Config'); await click('button', { hasText: 'Privacidad' })
+await page.screenshot({ path: 'test/shot-privacidad.png', fullPage: true })
+ok('Privacidad: finalidades con interruptores y derechos (descargar, eliminar)', (await page.locator('[role=switch]').count()) === 4 && /Descargar mis datos/.test(await T()) && /Eliminar mi cuenta/.test(await T()))
+await click('button', { hasText: 'Abrir el panel del operador' }); await click('button', { hasText: 'Cargar panel' }); await wait(300)
+await page.screenshot({ path: 'test/shot-operador.png', fullPage: true })
+ok('Panel del operador: resumen anónimo y perfil seudonimizado con oferta aceptada', /Resumen \(anónimo\)/.test(await T()) && /U-TEST01/.test(await T()) && /creditos_multiples: aceptada/.test(await T()))
+await click('button', { hasText: 'Identificar para contactar' }); await page.fill('input[placeholder^="Motivo"]', 'Seguimiento a oferta aceptada'); await submit('Revelar identidad'); await wait(300)
+ok('Identificación con motivo revela correo y queda registrada', /u-andres@test.co/.test(await T()) && (await DB(() => window.__sb._T.accesos_operador.some(a => a.accion === 'identificar' && a.motivo === 'Seguimiento a oferta aceptada'))))
+await page.locator('button[aria-label="Cerrar"]').click(); await wait(150)
+await click('button', { hasText: /^Venta$/ }); await wait(300)
+st = await DB(() => window.__sb._T.ofertas[0]); ok('Resultado "venta" anotado: oferta convertida (la señal se mide)', st.estado === 'convertida' && st.resultado === 'venta')
+// retirar finalidad perfil borra el perfil
+await tab('Config'); await click('button', { hasText: 'Privacidad' }); await page.locator('[role=switch]').nth(2).click(); await wait(300)
+st = await DB(() => window.__sb._T.perfil_usuario.filter(p => p.user_id === 'u-andres').length); ok('Retirar la finalidad "perfil" borra el perfil calculado', st === 0 && /retirada/.test(await T()))
+await page.locator('[role=switch]').nth(2).click(); await wait(300)
+// Esposa: sin comercial → sin ofertas; sin analítica → sin eventos
+await loginAs('u-esposa', 'esposa@test.co', { sinAnalitica: true })
+await DB(() => { const T = window.__sb._T; T.perfil_usuario.push({ user_id: 'u-esposa', codigo: 'U-TEST02', indicadores: { salud: 50 }, senales: ['activos_sin_cobertura'], calculado_en: new Date().toISOString() }) })
+await cambiarEspacio('Casa Quijano'); await cambiarEspacio('Personal'); await page.locator('button[aria-label="Mi perfil"]').click(); await wait(300)
+ok('Esposa ve su perfil sin ofertas (no autorizó la finalidad comercial)', /U-TEST02/.test(await T()) && /No autorizaste ofertas comerciales/.test(await T()) && !/Ofertas de Kontbox/.test(await T()))
+await cambiarEspacio('Personal'); await tab('Deudas'); await wait(8600)
+st = await DB(() => window.__sb._T.eventos.filter(e => e.user_id === 'u-esposa').length); ok('Esposa sin analítica: ningún evento registrado', st === 0)
+await loginAs('u-andres', 'andres@test.co')
+
 // Amigo: aislamiento total
 await loginAs('u-amigo', 'amigo@test.co'); await page.fill('input[placeholder="Ej. Andrés"]', 'Amigo'); await click('button', { hasText: 'Guardar' }); await wait(200)
 await tab('Config'); ok('Amigo solo ve su espacio personal', /Mis espacios/.test(await T()) && !/Casa Quijano/.test(await T()) && !/Kontbox/.test(await T()))
@@ -214,6 +259,8 @@ await click('button', { hasText: 'Crear hogar o empresa' }); await fillLabel('No
 await tab('Movim.'); ok('Amigo NO ve movimientos ajenos', !/Mercado/.test(await T()) && /Sin movimientos/.test(await T()))
 await tab('Deudas'); ok('Amigo NO ve tarjeta ni crédito ajenos', !/Visa Bancolombia/.test(await T()) && !/Crédito Mazda/.test(await T()))
 st = await DB(() => { const T = window.__sb._T; return { esp: T.espacios.length, movA: T.movimientos.filter(m => m.espacio_id === T.espacios.find(e => e.tipo === 'hogar' && e.nombre === 'Casa Amigo').id).length } })
+await tab('Config'); await click('button', { hasText: 'Privacidad' }); await click('button', { hasText: 'Eliminar mi cuenta' }); await page.fill('input[placeholder="ELIMINAR"]', 'ELIMINAR'); await submit('Eliminar definitivamente'); await wait(600)
+ok('Amigo elimina su cuenta: vuelve al login y sus datos desaparecen', /Enviarme el código por correo/.test(await T()) && (await DB(() => !window.__sb._T.espacios.some(e => e.dueno_id === 'u-amigo') && !window.__sb._T.espacio_miembros.some(m => m.user_id === 'u-amigo'))))
 ok('Datos de Amigo aislados', st.movA === 0)
 
 await page.screenshot({ path: 'test/shot-amigo.png' })

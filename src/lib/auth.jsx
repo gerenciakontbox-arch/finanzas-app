@@ -3,7 +3,9 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 
-export const SCHEMA_VERSION = '5'
+export const SCHEMA_VERSION = '6'
+// Estado vigente por finalidad (última fila) + versión de política con la que se aceptó el servicio
+const resumirConsent = rows => { const out = { version: null, servicio: false, analitica: false, perfil: false, comercial: false }; const visto = {}; for (const r of rows) { if (visto[r.finalidad]) continue; visto[r.finalidad] = true; out[r.finalidad] = !!r.aceptado; if (r.finalidad === 'servicio') out.version = r.version } return out }
 const Ctx = createContext(null)
 export const useAuth = () => useContext(Ctx)
 
@@ -13,6 +15,8 @@ export function AuthProvider({ children }) {
   const [espacios, setEspacios] = useState([])
   const [miembros, setMiembros] = useState([])      // de TODOS mis espacios
   const [schemaOk, setSchemaOk] = useState(null)    // null = sin verificar
+  const [consent, setConsent] = useState({ version: null, servicio: false, analitica: false, perfil: false, comercial: false })
+  const [esOperador, setEsOperador] = useState(false)
   const [listo, setListo] = useState(false)
 
   const cargarContexto = useCallback(async (s) => {
@@ -21,12 +25,14 @@ export function AuthProvider({ children }) {
     const ok = meta?.valor === SCHEMA_VERSION; setSchemaOk(ok)
     if (!ok) { setListo(true); return }
     await supabase.rpc('asegurar_personal')
-    const [{ data: p }, { data: es }, { data: ms }] = await Promise.all([
+    const [{ data: p }, { data: es }, { data: ms }, { data: cs }, { data: adm }] = await Promise.all([
       supabase.from('perfiles').select('*').eq('user_id', s.user.id).maybeSingle(),
       supabase.from('espacios').select('*'),
       supabase.from('espacio_miembros').select('*'),
+      supabase.from('consentimientos').select('finalidad,aceptado,version,creado_en,id').order('creado_en', { ascending: false }).order('id', { ascending: false }),
+      supabase.from('app_admins').select('user_id').eq('user_id', s.user.id).maybeSingle(),
     ])
-    setPerfil(p); setEspacios(es || []); setMiembros(ms || []); setListo(true)
+    setPerfil(p); setEspacios(es || []); setMiembros(ms || []); setConsent(resumirConsent(cs || [])); setEsOperador(!!adm); setListo(true)
   }, [])
 
   useEffect(() => {
@@ -48,6 +54,9 @@ export function AuthProvider({ children }) {
     miembros: espacio ? miembrosDe(espacio.id) : [], miembrosDe, miembrosTodos: miembros, miembroActual, nombreDe,
     esAdmin: miembroActual?.rol === 'admin' || espacio?.tipo === 'personal',
     recargar: () => cargarContexto(session),
+    consent, esOperador,
+    registrarConsentimientos: async (obj, version) => { const { error } = await supabase.rpc('registrar_consentimientos', { p: obj, p_version: version, p_user_agent: navigator.userAgent }); if (error) throw error; const { data: cs } = await supabase.from('consentimientos').select('finalidad,aceptado,version,creado_en,id').order('creado_en', { ascending: false }).order('id', { ascending: false }); setConsent(resumirConsent(cs || [])) },
+    eliminarMiCuenta: async () => { const { error } = await supabase.rpc('eliminar_mi_cuenta'); if (error) throw error; await supabase.auth.signOut() },
     enviarEnlace: async (email) => supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } }),
     verificarCodigo: async (email, token) => supabase.auth.verifyOtp({ email, token: String(token).replace(/\D/g, ''), type: 'email' }),
     salir: () => supabase.auth.signOut(),
