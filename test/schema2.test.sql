@@ -3,7 +3,9 @@
 drop database if exists fintest2; create database fintest2;
 \c fintest2
 set client_min_messages = warning;
-create extension if not exists pgcrypto;
+-- Como en Supabase: pgcrypto vive en el esquema extensions y NO está en el search_path de las funciones (set search_path = public)
+create schema if not exists extensions; create extension if not exists pgcrypto schema extensions;
+set search_path = public, extensions;
 create schema if not exists auth; create schema if not exists storage;
 create table auth.users(id uuid primary key, email text);
 create or replace function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;
@@ -30,7 +32,7 @@ grant all on all sequences in schema public to authenticated;
 
 -- ===================== DATOS HEREDADOS (modelo hogar) =====================
 \echo '=== Semilla heredada'
-set role authenticated; set request.jwt.claim.sub = :'a';
+set role authenticated; set request.jwt.claim.sub = :'a'; set search_path = public, extensions;
 select crear_hogar('Casa Quijano','Andrés') as h \gset
 insert into entidades(hogar_id,nombre,tipo) values (:'h','Kontbox','empresa');
 select codigo_invitacion as cod from hogares \gset

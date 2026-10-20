@@ -11,7 +11,7 @@ const CATS_EMP = [['Arriendo', 'Fijo'], ['Nómina', 'Fijo'], ['Honorarios', 'Var
 export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}) {
   const T = {}; const tablas = ['app_meta', 'espacios', 'espacio_miembros', 'perfiles', 'categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'programado', 'programado_adjuntos', 'movimientos', 'bitacora']
   tablas.forEach(t => T[t] = [])
-  T.app_meta.push({ clave: 'schema_version', valor: '3' })
+  T.app_meta.push({ clave: 'schema_version', valor: '4' })
   let session = null; const listeners = []
   const me = () => session?.user?.id
   const misEspacios = (u = me()) => T.espacio_miembros.filter(m => m.user_id === u).map(m => m.espacio_id)

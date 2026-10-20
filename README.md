@@ -6,7 +6,7 @@ App de finanzas personales con **espacios** compartidos (hogar, empresa). React 
 
 ### 1. Supabase
 1. Crea una cuenta en https://supabase.com y un proyecto nuevo (región **East US (N. Virginia)**, la más cercana a Colombia). Guarda la contraseña de la base de datos aunque la app no la usa.
-2. En el panel: **SQL Editor → New query**. Pega el contenido completo de `supabase/migrations/0001_schema.sql` y ejecuta (**Run**); luego haz lo mismo, en orden, con `0002_espacios.sql` y `0003_creditos_plan.sql`. Todos son idempotentes: puedes volver a ejecutarlos.
+2. En el panel: **SQL Editor → New query**. Pega el contenido completo de `supabase/migrations/0001_schema.sql` y ejecuta (**Run**); luego haz lo mismo, en orden, con `0002_espacios.sql`, `0003_creditos_plan.sql` y `0004_codigo_invitacion.sql`. Todos son idempotentes: puedes volver a ejecutarlos.
 3. En **Authentication → URL Configuration**:
    - *Site URL*: la URL de tu sitio en Netlify (por ejemplo `https://finanzas-quijano.netlify.app`).
    - *Redirect URLs*: agrega esa misma URL y `http://localhost:5173` (para desarrollo).
@@ -51,6 +51,9 @@ Los esquemas fueron validados contra Postgres 16 con RLS activo y tres usuarios:
 ```
 psql -h /tmp -p 5499 -U postgres -f test/schema2.test.sql && psql -h /tmp -p 5499 -U postgres -f test/schema3.test.sql
 ```
+
+## Migración 0004 · código de invitación sin pgcrypto
+En Supabase `pgcrypto` vive en el esquema `extensions` y las funciones de la app fijan `search_path = public`, así que `gen_random_bytes` no existía al crear un espacio. `0004_codigo_invitacion.sql` genera el código con `md5` (core). La base de pruebas local ahora instala pgcrypto en `extensions`, como Supabase, para que esto no vuelva a pasar desapercibido.
 
 ## Migración 0003 · créditos, depreciación y presupuesto → programado
 Supabase → **SQL Editor** → pega `supabase/migrations/0003_creditos_plan.sql` → **Run** (la app pide esquema v3). Qué agrega:
