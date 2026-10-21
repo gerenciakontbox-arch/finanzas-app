@@ -11,8 +11,9 @@ export function indicePagadas(cuotas_pagadas) {
   return { deuda, cargo }
 }
 
+const conPrevias = (pag, n) => { const out = { ...pag }; for (let i = 1; i <= (n || 0); i++) if (!out[i]) out[i] = { previa: true, numero: i, fecha_pago: null, monto_pagado: null }; return out }
 export function resumenDeuda(d, idx, abonos = []) {
-  const pag = idx.deuda[d.id] || {}
+  const pag = conPrevias(idx.deuda[d.id] || {}, d.cuotas_previas)
   const am = amortizacion({ capital: +d.capital_inicial, tasa: +d.tasa_mensual, n: d.total_cuotas, fechaInicio: d.fecha_primera_cuota, sistema: d.sistema || 'fija', seguro: +d.seguro_mensual || 0, pagadas: pag, abonos: abonos.filter(a => a.deuda_id === d.id) })
   const rows = am.map(c => ({ ...c, pago: pag[c.n] || null }))
   const pendientes = rows.filter(c => !c.pago)
@@ -36,7 +37,7 @@ export const valorNeto = (a, hoy) => { const d = depreciacion(a, hoy); return d 
 
 export function resumenCargo(c, idx) {
   const am = amortizacion({ capital: +c.monto, tasa: +c.tasa_mensual, n: c.cuotas, fechaInicio: c.primera_cuota || addMonths(c.fecha, 1) })
-  const pag = idx.cargo[c.id] || {}
+  const pag = conPrevias(idx.cargo[c.id] || {}, c.cuotas_previas)
   const rows = am.map(x => ({ ...x, pago: pag[x.n] || null }))
   const pend = rows.filter(x => !x.pago)
   return { ...c, am: rows, pend, pagadas: rows.length - pend.length, next: pend[0] || null, saldo: pend.reduce((a, x) => a + x.capital, 0), liquidado: pend.length === 0 }

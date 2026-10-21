@@ -6,7 +6,7 @@ App de finanzas personales con **espacios** compartidos (hogar, empresa). React 
 
 ### 1. Supabase
 1. Crea una cuenta en https://supabase.com y un proyecto nuevo (región **East US (N. Virginia)**, la más cercana a Colombia). Guarda la contraseña de la base de datos aunque la app no la usa.
-2. En el panel: **SQL Editor → New query**. Pega el contenido completo de `supabase/migrations/0001_schema.sql` y ejecuta (**Run**); luego haz lo mismo, en orden, con `0002_espacios.sql`, `0003_creditos_plan.sql`, `0004_codigo_invitacion.sql`, `0005_push.sql`, `0006_perfil.sql` y `0007_import_movimientos.sql`. Todos son idempotentes: puedes volver a ejecutarlos.
+2. En el panel: **SQL Editor → New query**. Pega el contenido completo de `supabase/migrations/0001_schema.sql` y ejecuta (**Run**); luego haz lo mismo, en orden, con `0002_espacios.sql`, `0003_creditos_plan.sql`, `0004_codigo_invitacion.sql`, `0005_push.sql`, `0006_perfil.sql`, `0007_import_movimientos.sql` y `0008_saldos_apertura.sql`. Todos son idempotentes: puedes volver a ejecutarlos.
 3. En **Authentication → URL Configuration**:
    - *Site URL*: la URL de tu sitio en Netlify (por ejemplo `https://finanzas-quijano.netlify.app`).
    - *Redirect URLs*: agrega esa misma URL y `http://localhost:5173` (para desarrollo).
@@ -43,7 +43,7 @@ npm run build            # genera dist/
 ```
 
 ## Pruebas
-`test/e2e.mjs` recorre los flujos principales (80 verificaciones) contra un backend simulado en memoria (`test/mockSupabase.js`): espacios, cuentas habilitadas, aportes espejo, factura partida, privacidad entre miembros y entre hogares. Requiere Chromium de Playwright:
+`test/e2e.mjs` recorre los flujos principales (82 verificaciones) contra un backend simulado en memoria (`test/mockSupabase.js`): espacios, cuentas habilitadas, aportes espejo, factura partida, privacidad entre miembros y entre hogares. Requiere Chromium de Playwright:
 ```
 npx vite build -c test/vite.test.config.js && node test/e2e.mjs
 ```
@@ -51,6 +51,10 @@ Los esquemas fueron validados contra Postgres 16 con RLS activo y tres usuarios:
 ```
 psql -h /tmp -p 5499 -U postgres -f test/schema2.test.sql && psql -h /tmp -p 5499 -U postgres -f test/schema3.test.sql
 ```
+
+## Saldos de apertura (migración 0008)
+- **Cuentas**: `saldo_inicial` + `fecha_corte` (Ajustes → Cuentas, al crear o editar). Saldo = saldo inicial + movimientos con fecha posterior al corte; lo anterior al corte (p. ej. un histórico importado) es historia y no altera el saldo.
+- **Créditos** y **compras con tarjeta**: `cuotas_previas` = cuotas pagadas antes de usar la app; aparecen como "Pagada antes de la app" sin movimiento de caja, y el saldo y el % amortizado quedan reales.
 
 ## Importar movimientos desde archivo plano (migración 0007)
 Movimientos → botón de subir. CSV con `fecha` y `monto` obligatorias y opcionales `descripcion, tipo, categoria, cuenta, notas, id`; reconoce la exportación de **MonAi** (`date, purpose, amount, category, tags, id…`). Reglas: ingresos/salidas por columna `tipo`, por signo (negativo = salida) o todo de un tipo; categorías nuevas se crean en grupo Variable (o van a "Otro"); cuenta por fila o una elegida para todo el archivo; `id` se guarda en `movimientos.ref_externa` (único por espacio) para reimportar sin duplicar; `tags`/`notas` van a `notas`; moneda distinta de COP se avisa y el monto se toma tal cual. Inserta por lotes de 300.

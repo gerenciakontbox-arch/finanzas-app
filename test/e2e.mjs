@@ -233,6 +233,19 @@ await submit('Importar 1'); await wait(500)
 st = await DB(() => window.__sb._T.movimientos.filter(m => m.origen === 'importacion').length); ok('Sin duplicados tras reimportar (5 en total)', st === 5)
 await page.screenshot({ path: 'test/shot-import-mov.png', fullPage: true })
 
+// ===== Saldos de apertura: cuenta con saldo inicial + fecha de corte; crédito con cuotas previas =====
+await tab('Config'); await click('button', { hasText: 'Cuentas' })
+await page.locator('button[aria-label="Editar Bancolombia Andrés"]').click(); await wait(200)
+const saldoAntes = await DB(() => { const T = window.__sb._T; const c = T.cuentas.find(x => x.nombre === 'Bancolombia Andrés'); let s = 0; for (const m of T.movimientos.filter(m => m.espacio_id === c.espacio_id)) { const v = +m.monto; if (m.cuenta_id === c.id) { if (m.tipo === 'Ingreso' || (m.tipo === 'Transferencia' && ['recibido', 'devolucion'].includes(m.subtipo))) s += v; else s -= v } if (m.subtipo === 'traslado' && m.cuenta_destino_id === c.id) s += v } return s })
+await page.locator('label:has-text("Saldo al empezar (COP)")').last().locator('xpath=following-sibling::*[1]').fill('1000000'); await page.locator('label:has-text("Fecha de corte")').last().locator('xpath=following-sibling::*[1]').fill('2026-09-30'); await submit('Guardar'); await wait(300)
+const septNeto = await DB(() => { const T = window.__sb._T; const c = T.cuentas.find(x => x.nombre === 'Bancolombia Andrés'); return T.movimientos.filter(m => m.cuenta_id === c.id && m.fecha <= '2026-09-30').reduce((a, m) => a + (m.tipo === 'Ingreso' ? +m.monto : -m.monto), 0) })
+await tab('Inicio')
+const esperado = 1000000 + saldoAntes - septNeto
+ok(`Saldo = saldo inicial + movimientos posteriores al corte (${esperado.toLocaleString('es-CO')}); el histórico de septiembre no lo altera`, new RegExp('Bancolombia Andrés[\\s\\S]{0,40}\\$ ' + esperado.toLocaleString('es-CO').replace(/\./g, '\\.')).test(await T()))
+await tab('Deudas'); await click('button', { hasText: 'Nuevo' })
+await fillLabel('Nombre', 'Crédito viejo'); await fillLabel('Capital inicial', 10000000); await fillLabel('Tasa mensual (%)', 1); await fillLabel('Total cuotas', 10); await fillLabel('Primera cuota', '2026-01-01'); await fillLabel('Cuotas ya pagadas antes de la app', 4); await submit('Guardar'); await wait(300)
+ok('Crédito con 4 cuotas previas: 4/10 pagadas y próxima N° 5, sin movimientos de caja', /4\/10 cuotas pagadas/.test(await T()) && /N° 5/.test(await T()) && (await DB(() => window.__sb._T.movimientos.filter(m => /Crédito viejo/.test(m.descripcion)).length)) === 0)
+
 // ===== Lote 5 · perfil, ofertas, operador, privacidad =====
 await cambiarEspacio('Personal'); await wait(8600)   // los eventos se envían por lotes cada 8 s
 st = await DB(() => window.__sb._T.eventos.filter(e => e.user_id === 'u-andres').map(e => e.tipo))

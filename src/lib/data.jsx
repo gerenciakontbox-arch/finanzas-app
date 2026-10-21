@@ -57,9 +57,10 @@ export function DataProvider({ children }) {
     // Saldo de una cuenta: solo movimientos de SU espacio (los de espacios compartidos no tocan caja; sus espejos sí)
     const saldoCuenta = c => {
       if (!all || !c || c.tipo === TC) return 0
-      let s = 0
+      let s = +c.saldo_inicial || 0; const corte = c.fecha_corte || null
       for (const m of all.movimientos) {
         if (m.espacio_id !== c.espacio_id) continue
+        if (corte && m.fecha <= corte) continue   // anterior al corte: historia, no saldo
         const monto = +m.monto
         if (m.tipo === 'Ingreso' && m.cuenta_id === c.id) s += monto
         else if (m.tipo === 'Salida' && m.cuenta_id === c.id) s -= monto

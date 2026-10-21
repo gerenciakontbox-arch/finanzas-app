@@ -103,9 +103,9 @@ function TCF({ v, set }) { return (<><Field label="Cupo (COP)"><input type="numb
 function Cuentas() {
   const { db, insertar, actualizar, borrar, rpc, nombreCuenta, saldoCuenta, duenoCuenta } = useData()
   const { espacio, esPersonal, compartidos, userId, nombreDe } = useAuth()
-  const empty = { nombre: '', tipo: 'Bancaria', cupo: '', tasa_mensual: '', banco: '', ultimos4: '', dia_corte: '' }
+  const empty = { nombre: '', tipo: 'Bancaria', cupo: '', tasa_mensual: '', banco: '', ultimos4: '', dia_corte: '', saldo_inicial: '', fecha_corte: today() }
   const [form, sf, setForm] = useForm(empty); const [edit, setEdit] = useState(null)
-  const build = f => ({ nombre: f.nombre.trim(), tipo: f.tipo, cupo: f.tipo === TC ? parseFloat(f.cupo) || null : null, tasa_mensual: f.tipo === TC ? parseFloat(f.tasa_mensual) || 0 : null, banco: f.tipo === TC ? f.banco || null : null, ultimos4: f.tipo === TC && /^\d{4}$/.test(f.ultimos4) ? f.ultimos4 : null, dia_corte: f.tipo === TC ? parseInt(f.dia_corte) || null : null })
+  const build = f => ({ nombre: f.nombre.trim(), tipo: f.tipo, saldo_inicial: f.tipo === TC ? 0 : (parseFloat(String(f.saldo_inicial).replace(/[^\d.-]/g, '')) || 0), fecha_corte: f.tipo === TC ? null : (f.fecha_corte || null), cupo: f.tipo === TC ? parseFloat(f.cupo) || null : null, tasa_mensual: f.tipo === TC ? parseFloat(f.tasa_mensual) || 0 : null, banco: f.tipo === TC ? f.banco || null : null, ultimos4: f.tipo === TC && /^\d{4}$/.test(f.ultimos4) ? f.ultimos4 : null, dia_corte: f.tipo === TC ? parseInt(f.dia_corte) || null : null })
   const add = async () => { if (!form.nombre.trim()) return; try { await insertar('cuentas', build(form)); setForm(empty) } catch (e) { alert(e.message) } }
   const save = async () => { try { await actualizar('cuentas', edit.id, build(edit)); setEdit(null) } catch (e) { alert(e.message) } }
   const habilitada = (c, eid) => db.cuentas_espacio.some(x => x.cuenta_id === c.id && x.espacio_id === eid)
@@ -120,15 +120,17 @@ function Cuentas() {
           <Field label="Nombre" full><input value={form.nombre} onChange={e => sf('nombre', e.target.value)} placeholder="Ej. Bancolombia, Visa Bancolombia" style={inp} /></Field>
           <Field label="Tipo"><select value={form.tipo} onChange={e => sf('tipo', e.target.value)} style={sel}>{TIPOS_CTA.map(x => <option key={x}>{x}</option>)}</select></Field>
           {form.tipo === TC && <TCF v={form} set={sf} />}
+          {form.tipo !== TC && <><Field label="Saldo al empezar (COP)"><input type="number" inputMode="numeric" value={form.saldo_inicial} onChange={e => sf('saldo_inicial', e.target.value)} placeholder="0" style={inp} /></Field><Field label="Fecha de corte"><input type="date" value={form.fecha_corte || ''} onChange={e => sf('fecha_corte', e.target.value)} style={inp} /></Field></>}
         </div>
         {form.tipo === TC && <div style={{ marginBottom: 10 }}><Aviso tipo="info">La tarjeta aparecerá en Deudas con su panel de compras y pago de factura.</Aviso></div>}
+        {form.tipo !== TC && <div style={{ marginBottom: 10 }}><Aviso tipo="info">El saldo de la cuenta será el saldo al empezar más los movimientos posteriores a la fecha de corte. Lo anterior al corte (por ejemplo, un histórico importado) queda como historia y no altera el saldo.</Aviso></div>}
         <button onClick={add} style={{ width: '100%', background: '#4B1D9E', color: '#fff', border: 'none', borderRadius: 22, height: 44, fontWeight: 800, cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Agregar cuenta</button>
         <div style={{ borderTop: '1px solid #EBE9F1', paddingTop: 14, marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {db.cuentasPropias.length === 0 && <div style={{ fontSize: 12, color: '#9A9AA0' }}>Sin cuentas propias.</div>}
           {db.cuentasPropias.map(c => <div key={c.id} style={{ padding: '10px 12px', borderRadius: 10, background: '#fff' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
               <div style={{ minWidth: 0 }}><div style={{ fontWeight: 600, fontSize: 13 }}>{c.nombre} {c.tipo === TC && <span style={{ background: '#F3F1F8', color: '#4B1D9E', fontSize: 10, padding: '1px 6px', borderRadius: 6, fontWeight: 700, border: '1px solid #D9D2EA' }}>TC</span>}</div><div style={{ fontSize: 10, color: '#6E6E73' }}>{c.tipo}{c.tipo === TC ? ` · cupo ${fmtCOP(c.cupo)} · ${c.tasa_mensual}% · corte ${c.dia_corte || '—'}` : ` · saldo ${fmtCOP(saldoCuenta(c))}`}</div></div>
-              <div style={{ display: 'flex', gap: 6 }}><SmallBtn onClick={() => setEdit({ ...c, cupo: c.cupo ?? '', tasa_mensual: c.tasa_mensual ?? '', dia_corte: c.dia_corte ?? '' })} bg="#F3F1F8" color="#4B1D9E"><Icon name="pencil" size={13} /></SmallBtn><SmallBtn onClick={async () => { if (window.confirm('¿Eliminar cuenta?' + (c.tipo === TC ? ' Se borran también sus compras.' : ''))) { try { await borrar('cuentas', c.id) } catch (e) { alert(e.message) } } }} bg="#FBEAE7" color="#B42318"><Icon name="trash" size={13} /></SmallBtn></div>
+              <div style={{ display: 'flex', gap: 6 }}><SmallBtn aria-label={'Editar ' + c.nombre} onClick={() => setEdit({ ...c, cupo: c.cupo ?? '', tasa_mensual: c.tasa_mensual ?? '', dia_corte: c.dia_corte ?? '', saldo_inicial: c.saldo_inicial ?? '', fecha_corte: c.fecha_corte || '' })} bg="#F3F1F8" color="#4B1D9E"><Icon name="pencil" size={13} /></SmallBtn><SmallBtn onClick={async () => { if (window.confirm('¿Eliminar cuenta?' + (c.tipo === TC ? ' Se borran también sus compras.' : ''))) { try { await borrar('cuentas', c.id) } catch (e) { alert(e.message) } } }} bg="#FBEAE7" color="#B42318"><Icon name="trash" size={13} /></SmallBtn></div>
             </div>
             {esPersonal && compartidos.length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}><span style={{ fontSize: 10, color: '#9A9AA0' }}>Disponible en:</span>{compartidos.map(e => { const on = habilitada(c, e.id); return <button key={e.id} aria-label={`${c.nombre} en ${e.nombre}`} onClick={() => toggle(c, e.id, !on)} style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 8, border: '1px solid', cursor: 'pointer', background: on ? '#E7F5EE' : '#fff', color: on ? '#138A5B' : '#6E6E73', borderColor: on ? '#6ee7b7' : '#EBE9F1' }}>{on ? '✓ ' : ''}{e.nombre}</button> })}</div>}
           </div>)}
@@ -145,6 +147,7 @@ function Cuentas() {
           <Field label="Nombre" full><input value={edit.nombre} onChange={e => setEdit(p => ({ ...p, nombre: e.target.value }))} style={inp} /></Field>
           <Field label="Tipo"><select value={edit.tipo} onChange={e => setEdit(p => ({ ...p, tipo: e.target.value }))} style={sel}>{TIPOS_CTA.map(x => <option key={x}>{x}</option>)}</select></Field>
           {edit.tipo === TC && <TCF v={edit} set={(k, v) => setEdit(p => ({ ...p, [k]: v }))} />}
+          {edit.tipo !== TC && <><Field label="Saldo al empezar (COP)"><input type="number" inputMode="numeric" value={edit.saldo_inicial ?? ''} onChange={e => setEdit(p => ({ ...p, saldo_inicial: e.target.value }))} style={inp} /></Field><Field label="Fecha de corte"><input type="date" value={edit.fecha_corte || ''} onChange={e => setEdit(p => ({ ...p, fecha_corte: e.target.value }))} style={inp} /></Field></>}
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={() => setEdit(null)} /><SaveBtn onClick={save}>Guardar</SaveBtn></div>
       </Modal>}

@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 
-export const SCHEMA_VERSION = '7'
+export const SCHEMA_VERSION = '8'
 // Estado vigente por finalidad (última fila) + versión de política con la que se aceptó el servicio
 const resumirConsent = rows => { const out = { version: null, servicio: false, analitica: false, perfil: false, comercial: false }; const visto = {}; for (const r of rows) { if (visto[r.finalidad]) continue; visto[r.finalidad] = true; out[r.finalidad] = !!r.aceptado; if (r.finalidad === 'servicio') out.version = r.version } return out }
 const Ctx = createContext(null)

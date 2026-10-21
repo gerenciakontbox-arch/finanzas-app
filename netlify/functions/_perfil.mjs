@@ -41,11 +41,12 @@ export function indicadores(d, hoy) {
   const meses_desbordados = presMeses.filter(x => x > 110).length
   // Deuda: créditos activos en mis espacios donde soy dueño del espacio personal o pagador
   const creditos = d.deu.filter(x => x.estado === 'Activo' && (x.espacio_id === pid || d.espacios.find(e => e.id === x.espacio_id)?.tipo !== 'personal'))
-  const capPagado = id => d.cuo.filter(c => c.deuda_id === id).reduce((a, c) => a + (+c.capital || 0), 0) + d.abo.filter(a => a.deuda_id === id).reduce((a, x) => a + +x.monto, 0)
+  const capPrevias = x => { const k = +x.cuotas_previas || 0; if (!k) return 0; if (x.sistema === 'capital') return +x.capital_inicial / x.total_cuotas * k; const cf = cfFija(+x.capital_inicial, +x.tasa_mensual, x.total_cuotas); let s = +x.capital_inicial, pag = 0; for (let i = 0; i < k; i++) { const cap = cf - s * (+x.tasa_mensual / 100); pag += cap; s -= cap } return pag }
+  const capPagado = id => { const x = d.deu.find(y => y.id === id); return capPrevias(x) + d.cuo.filter(c => c.deuda_id === id).reduce((a, c) => a + (+c.capital || 0), 0) + d.abo.filter(a => a.deuda_id === id).reduce((a, x) => a + +x.monto, 0) }
   const saldoCred = creditos.reduce((a, x) => a + Math.max(0, +x.capital_inicial - capPagado(x.id)), 0)
   const cargaMes = creditos.reduce((a, x) => a + (x.sistema === 'capital' ? +x.capital_inicial / x.total_cuotas + Math.max(0, +x.capital_inicial - capPagado(x.id)) * +x.tasa_mensual / 100 : cfFija(+x.capital_inicial, +x.tasa_mensual, x.total_cuotas)) + (+x.seguro_mensual || 0), 0)
   const tcs = d.cta.filter(c => c.tipo === 'Tarjeta crédito' && c.espacio_id === pid)
-  const saldoTC = tcs.reduce((a, t) => a + d.car.filter(c => c.cuenta_id === t.id).reduce((s, c) => { const pag = d.cuo.filter(x => x.cargo_id === c.id).length; return s + +c.monto * Math.max(0, c.cuotas - pag) / c.cuotas }, 0), 0)
+  const saldoTC = tcs.reduce((a, t) => a + d.car.filter(c => c.cuenta_id === t.id).reduce((s, c) => { const pag = d.cuo.filter(x => x.cargo_id === c.id).length + (+c.cuotas_previas || 0); return s + +c.monto * Math.max(0, c.cuotas - pag) / c.cuotas }, 0), 0)
   const cupo = tcs.reduce((a, t) => a + (+t.cupo || 0), 0)
   // Hábito de registro: salidas manuales anotadas el mismo día (90 días)
   const manuales = movP.filter(m => m.origen === 'manual' && m.tipo === 'Salida' && m.creado_en && dias(hoy, m.fecha) <= 90)
@@ -53,7 +54,7 @@ export function indicadores(d, hoy) {
   // Patrimonio
   const neto = a => { if (!a.vida_util_meses) return +a.valor_estimado || 0; const base = +(a.valor_base ?? a.valor_estimado) || 0, res = Math.min(+a.valor_residual || 0, base); const desde = a.fecha_base || a.fecha_adquisicion; if (!desde) return base; const d0 = new Date(desde + 'T12:00:00'), d1 = new Date(hoy + 'T12:00:00'); const ms = Math.max(0, Math.min(a.vida_util_meses, (d1.getFullYear() - d0.getFullYear()) * 12 + d1.getMonth() - d0.getMonth())); return Math.round(base - (base - res) * ms / a.vida_util_meses) }
   const activosNeto = d.act.filter(a => a.espacio_id === pid).reduce((a, x) => a + neto(x), 0)
-  const saldoCuentas = d.cta.filter(c => c.espacio_id === pid && c.tipo !== 'Tarjeta crédito').reduce((a, c) => a + movP.filter(m => m.cuenta_id === c.id).reduce((s, m) => s + (m.tipo === 'Ingreso' || (m.tipo === 'Transferencia' && m.subtipo !== 'aporte' && m.subtipo !== 'traslado') ? +m.monto : -m.monto), 0) + movP.filter(m => m.subtipo === 'traslado' && m.cuenta_destino_id === c.id).reduce((s, m) => s + +m.monto, 0), 0)
+  const saldoCuentas = d.cta.filter(c => c.espacio_id === pid && c.tipo !== 'Tarjeta crédito').reduce((a, c) => a + (+c.saldo_inicial || 0) + movP.filter(m => m.cuenta_id === c.id && !(c.fecha_corte && m.fecha <= c.fecha_corte)).reduce((s, m) => s + (m.tipo === 'Ingreso' || (m.tipo === 'Transferencia' && m.subtipo !== 'aporte' && m.subtipo !== 'traslado') ? +m.monto : -m.monto), 0) + movP.filter(m => m.subtipo === 'traslado' && m.cuenta_destino_id === c.id && !(c.fecha_corte && m.fecha <= c.fecha_corte)).reduce((s, m) => s + +m.monto, 0), 0)
   const patrimonio_neto = Math.round(activosNeto + saldoCuentas - saldoCred - saldoTC)
   // Aportes a espacios compartidos (mes actual y anterior, promedio)
   const aportes_mes = Math.round([m0, addMonths(m0, -1)].map(mm => movP.filter(m => m.tipo === 'Transferencia' && m.subtipo === 'aporte' && mes(m.fecha) === mm).reduce((a, m) => a + +m.monto, 0)).reduce((a, b) => a + b, 0) / 2)
