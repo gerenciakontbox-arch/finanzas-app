@@ -11,7 +11,7 @@ const CATS_EMP = [['Arriendo', 'Fijo'], ['Nómina', 'Fijo'], ['Honorarios', 'Var
 export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}) {
   const T = {}; const tablas = ['app_meta', 'espacios', 'espacio_miembros', 'perfiles', 'categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'programado', 'programado_adjuntos', 'movimientos', 'bitacora', 'push_suscripciones', 'consentimientos', 'eventos', 'perfil_usuario', 'ofertas', 'senales_def', 'app_admins', 'accesos_operador']
   tablas.forEach(t => T[t] = [])
-  T.app_meta.push({ clave: 'schema_version', valor: '6' }); T.app_meta.push({ clave: 'politica_version', valor: '2026-10-20' })
+  T.app_meta.push({ clave: 'schema_version', valor: '7' }); T.app_meta.push({ clave: 'politica_version', valor: '2026-10-20' })
   T.senales_def.push({ codigo: 'creditos_multiples', nombre: 'Varios créditos activos', descripcion: 'Tienes dos o más créditos activos.', servicio: 'Reestructuración y optimización de deuda', activa: true }, { codigo: 'activos_sin_cobertura', nombre: 'Activos sin seguro registrado', descripcion: 'Tienes vehículos o inmuebles sin un seguro programado.', servicio: 'Revisión de coberturas', activa: true })
   T.app_admins.push({ user_id: 'u-andres', nombre: 'Andrés (operador)' })
   let session = null; const listeners = []
@@ -89,6 +89,7 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
           if (t === 'movimientos') { if (row.espejo_de) throw new Error('new row violates row-level security policy for table "movimientos"'); row.pagador_id = duenoCuenta(row.cuenta_id) || row.pagador_id || null; if (row.tipo === 'Transferencia') { row.subtipo ||= 'traslado'; if (row.subtipo === 'traslado' && !row.cuenta_destino_id) throw new Error('Un traslado necesita cuenta destino') } }
           if (t === 'categorias' && tipoEsp(row.espacio_id) !== 'personal' && !esAdmin(row.espacio_id)) throw new Error('Solo un administrador del espacio puede modificar las categorías')
           if (t === 'cuentas' && T.cuentas.some(c => c.espacio_id === row.espacio_id && c.nombre === row.nombre)) throw new Error('duplicate key value violates unique constraint "cuentas_espacio_id_nombre_key"')
+          if (t === 'movimientos' && row.ref_externa && T.movimientos.some(m => m.espacio_id === row.espacio_id && m.ref_externa === row.ref_externa)) throw new Error('duplicate key value violates unique constraint "movimientos_ref_externa_uq"')
           if (!(t === 'eventos' ? row.user_id === me() : visible(t, row))) throw new Error('new row violates row-level security policy for table "' + t + '"'); if (t === 'cuentas') setDueno(row); T[t].push(row)
           if (t === 'movimientos') sincronizarEspejos(row)
           return row

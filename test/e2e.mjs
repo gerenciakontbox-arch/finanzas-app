@@ -69,7 +69,7 @@ ok('Bancolombia y Visa habilitadas en Casa Quijano', st === 2 && /✓ Casa Quija
 await cambiarEspacio('Casa Quijano'); await tab('Presup.'); await plusBtn()
 await fillLabel('Concepto', 'Mercado'); await selectLabel('Quién lo paga', 'Andrés'); await fillLabel('Monto (COP)', 800000); await submit('Guardar')
 ok('Rubro del hogar con pagador', /Mercado/.test(await T()) && /Andrés/.test(await T()))
-await tab('Movim.'); await page.locator('div:has(> div > button:has-text("Todos")) > button').last().click(); await wait(150)
+await tab('Movim.'); await page.locator('button[title="Importar CSV"] + button').last().click(); await wait(150)
 await fillLabel('Descripción', 'Mercado Éxito'); await selectLabel('Categoría', 'Mercado'); await selectLabel('Cuenta de donde sale', 'Bancolombia Andrés'); await fillLabel('Monto (COP)', 120000)
 ok('Aviso de aporte antes de guardar', /aporte de Andrés/.test(await T()))
 await submit('Registrar')
@@ -123,7 +123,7 @@ ok('Esposa en Casa Quijano (miembro)', /Casa Quijano/.test(await T()) && /miembr
 await click('button', { hasText: 'Cuentas' }); ok('Esposa ve los medios de pago de Andrés, sin saldo', /Bancolombia Andrés/.test(await T()) && /de Andrés/.test(await T()) && !/saldo \$/.test(await T()))
 await click('button', { hasText: 'Categorías' }); ok('Esposa (miembro) no administra categorías', /Solo un administrador de Casa Quijano/.test(await T()))
 await tab('Movim.'); ok('Esposa ve el gasto de Andrés con pagador y autor', /Mercado Éxito/.test(await T()) && /Pagó Andrés · Registró Andrés/.test(await T()))
-await page.locator('div:has(> div > button:has-text("Todos")) > button').last().click(); await wait(150)
+await page.locator('button[title="Importar CSV"] + button').last().click(); await wait(150)
 await fillLabel('Descripción', 'Farmacia'); await selectLabel('Cuenta de donde sale', 'Bancolombia Andrés · Andrés'); await fillLabel('Monto (COP)', 45000); await submit('Registrar')
 st = await DB(() => { const T = window.__sb._T; const m = T.movimientos.find(x => x.descripcion === 'Farmacia'); const esp = T.movimientos.find(x => x.espejo_de === m?.id); const p = T.espacios.find(e => e.tipo === 'personal' && e.dueno_id === 'u-andres').id; return m && m.creado_por === 'u-esposa' && m.pagador_id === 'u-andres' && esp && esp.espacio_id === p && esp.subtipo === 'aporte' })
 ok('Esposa paga con la cuenta de Andrés → aporte de Andrés (registró Esposa)', st && /Pagó Andrés · Registró Esposa/.test(await T()))
@@ -137,7 +137,7 @@ await fillLabel('Nombre de la empresa', 'Kontbox'); await submit('Crear'); await
 ok('Empresa creada y activa', /Kontbox/.test(await T()) && /Esta empresa/.test(await T()))
 await click('button', { hasText: 'Cuentas' }); ok('Empresa con cuenta propia', /Caja Kontbox/.test(await T()))
 await cambiarEspacio('Personal'); await tab('Config'); await click('button', { hasText: 'Cuentas' }); await page.locator('button[aria-label="Bancolombia Andrés en Kontbox"]').click(); await wait(200)
-await cambiarEspacio('Kontbox'); await tab('Movim.'); await page.locator('div:has(> div > button:has-text("Todos")) > button').last().click(); await wait(150)
+await cambiarEspacio('Kontbox'); await tab('Movim.'); await page.locator('button[title="Importar CSV"] + button').last().click(); await wait(150)
 await fillLabel('Descripción', 'Honorarios octubre'); await selectLabel('Categoría', 'Honorarios'); await selectLabel('Cuenta de donde sale', 'Caja Kontbox'); await fillLabel('Monto (COP)', 8500000)
 await page.locator('label:has-text("Este pago es a un miembro") input').check(); await wait(100); await selectLabel('Cuenta del miembro', 'Bancolombia Andrés'); await submit('Registrar')
 st = await DB(() => { const T = window.__sb._T; const m = T.movimientos.find(x => x.descripcion === 'Honorarios octubre'); const esp = T.movimientos.find(x => x.espejo_de === m?.id); const p = T.espacios.find(e => e.tipo === 'personal' && e.dueno_id === 'u-andres').id; return esp && esp.espacio_id === p && esp.tipo === 'Ingreso' && +esp.monto === 8500000 && T.categorias.find(c => c.id === esp.categoria_id)?.nombre === 'Honorarios' })
@@ -148,7 +148,7 @@ await cambiarEspacio('Casa Quijano'); await tab('Inicio'); await page.screenshot
 // Capturas de todas las pantallas (revisión visual)
 await cambiarEspacio('Personal')
 for (const [k, f] of [['Movim.', 'mov'], ['Presup.', 'presup'], ['Progr.', 'progr'], ['Deudas', 'deudas'], ['Activos', 'activos'], ['Config', 'config']]) { await tab(k); await page.screenshot({ path: `test/shot-${f}.png`, fullPage: true }) }
-await tab('Movim.'); await page.locator('div:has(> div > button:has-text("Todos")) > button').last().click(); await wait(200); await page.screenshot({ path: 'test/shot-modal-mov.png' }); await page.locator('button[aria-label="Cerrar"]').click(); await wait(150)
+await tab('Movim.'); await page.locator('button[title="Importar CSV"] + button').last().click(); await wait(200); await page.screenshot({ path: 'test/shot-modal-mov.png' }); await page.locator('button[aria-label="Cerrar"]').click(); await wait(150)
 await cambiarEspacio('Casa Quijano'); await tab('Deudas'); await page.screenshot({ path: 'test/shot-deudas-hogar.png', fullPage: true })
 
 // ===== Lote 3 · créditos: cuota decreciente con seguro, anticipo con motivo, abono a capital =====
@@ -212,6 +212,26 @@ ok('Desprogramar: rubro vuelve a Planificado y la ocurrencia pendiente desaparec
 await page.screenshot({ path: 'test/shot-presup-prog.png', fullPage: true })
 
 await tab('Config'); await click('button', { hasText: 'Avisos' }); ok('Ajustes → Avisos: sección de avisos push', /Avisos de vencimientos/.test(await T()) && /7:00/.test(await T()))
+
+// ===== Importar movimientos (formato MonAi) con reimportación sin duplicados =====
+await cambiarEspacio('Personal'); await tab('Movim.'); await page.locator('button[title="Importar CSV"]').click(); await wait(150)
+const monai = `date,purpose,amount,currency,original_amount,original_currency,exchange_rate,category,emoji,creator,creator_name,tags,timezone,id,recurrence_id,recurrence_interval
+2026-09-03,Supermercado Carulla,-245000,COP,-245000,COP,1,Mercado,🛒,u1,Amigo,hogar,America/Bogota,m-001,,
+2026-09-05,Pago cliente ACME,3200000,COP,3200000,COP,1,Honorarios,💼,u1,Amigo,"trabajo, acme",America/Bogota,m-002,,
+2026-09-07,Uber,-18500,COP,-18500,COP,1,Transporte,🚗,u1,Amigo,,America/Bogota,m-003,,
+2026-09-08,Netflix,-26900,USD,-6.5,USD,4138,Suscripciones,📺,u1,Amigo,,America/Bogota,m-004,r1,monthly
+`
+await page.setInputFiles('input[type=file]', { name: 'monai.csv', mimeType: 'text/csv', buffer: Buffer.from(monai) }); await wait(400)
+ok('CSV de MonAi reconocido: regla por signo sugerida, 4 filas a importar, categorías nuevas detectadas', /Archivo de MonAi reconocido/.test(await T()) && /Por el signo del monto[^<]*sugerido/.test(await T()) && /Suscripciones/.test(await T()))
+await page.locator('select').last().selectOption({ label: 'Bancolombia Andrés' }); await submit('Importar 4'); await wait(600)
+st = await DB(() => { const T = window.__sb._T; const ms = T.movimientos.filter(m => m.origen === 'importacion'); return { n: ms.length, ing: ms.filter(m => m.tipo === 'Ingreso').map(m => m.monto), sal: ms.filter(m => m.tipo === 'Salida').reduce((a, m) => a + m.monto, 0), refs: ms.map(m => m.ref_externa).sort(), notas: ms.find(m => m.ref_externa === 'm-002')?.notas, cat: !!T.categorias.find(c => c.nombre === 'Suscripciones') } })
+ok('4 movimientos importados: 1 ingreso de 3.200.000, salidas 290.400, referencias guardadas, tags en notas, categoría creada', st.n === 4 && JSON.stringify(st.ing) === '[3200000]' && st.sal === 290400 && JSON.stringify(st.refs) === '["m-001","m-002","m-003","m-004"]' && st.notas === 'trabajo, acme' && st.cat)
+await page.locator('button[title="Importar CSV"]').click(); await wait(150)
+await page.setInputFiles('input[type=file]', { name: 'monai2.csv', mimeType: 'text/csv', buffer: Buffer.from(monai + '2026-09-09,Farmacia,-42000,COP,-42000,COP,1,Salud,💊,u1,Amigo,,America/Bogota,m-005,,\n') }); await wait(400)
+ok('Reimportar: 4 ya importadas se omiten y solo entra la nueva', /Importar 1$/m.test(await T()) || (await page.locator('button', { hasText: /^Importar 1$/ }).count()) === 1)
+await submit('Importar 1'); await wait(500)
+st = await DB(() => window.__sb._T.movimientos.filter(m => m.origen === 'importacion').length); ok('Sin duplicados tras reimportar (5 en total)', st === 5)
+await page.screenshot({ path: 'test/shot-import-mov.png', fullPage: true })
 
 // ===== Lote 5 · perfil, ofertas, operador, privacidad =====
 await cambiarEspacio('Personal'); await wait(8600)   // los eventos se envían por lotes cada 8 s
