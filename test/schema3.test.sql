@@ -4,9 +4,9 @@
 -- Líneas ERROR esperadas: 4 (bloqueo de rubro programado ×2, cuota repetida, abono en crédito inexistente).
 \c fintest2
 set client_min_messages = warning;
-\i /home/claude/finanzas-app/supabase/migrations/0003_creditos_plan.sql
-\i /home/claude/finanzas-app/supabase/migrations/0004_codigo_invitacion.sql
-\i /home/claude/finanzas-app/supabase/migrations/0005_push.sql
+\i supabase/migrations/0003_creditos_plan.sql
+\i supabase/migrations/0004_codigo_invitacion.sql
+\i supabase/migrations/0005_push.sql
 grant all on all tables in schema public to authenticated;
 
 \set a '11111111-1111-1111-1111-111111111111'

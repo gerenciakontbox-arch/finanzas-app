@@ -8,7 +8,7 @@ const root = path.resolve('test/dist')
 const server = createServer((req, res) => { let p = path.join(root, req.url.split('?')[0]); if (!existsSync(p) || p.endsWith('/')) p = path.join(root, 'index.html'); const ext = path.extname(p); res.setHeader('Content-Type', { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.json': 'application/json', '.png': 'image/png' }[ext] || 'application/octet-stream'); res.end(readFileSync(p)) }).listen(4177)
 
 const results = []; const ok = (n, c) => { results.push([c ? 'PASS' : 'FAIL', n]); if (!c) console.log('   ✗', n) }
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' }); const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
+const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}); const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
 page.on('pageerror', e => console.log('PAGEERROR', e.message)); page.on('console', m => { if (m.type() === 'error' && !/ERR_TUNNEL|fonts/.test(m.text())) console.log('CONSOLE', m.text().slice(0, 200)) })
 page.on('dialog', d => d.accept())
 const T = () => page.evaluate(() => document.body.innerText)

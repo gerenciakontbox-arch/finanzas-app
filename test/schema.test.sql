@@ -21,7 +21,7 @@ insert into auth.users values ('11111111-1111-1111-1111-111111111111','andres@te
                               ('22222222-2222-2222-2222-222222222222','esposa@test.co'),
                               ('33333333-3333-3333-3333-333333333333','amigo@test.co');
 
-\i /home/claude/finanzas-app/supabase/migrations/0001_schema.sql
+\i supabase/migrations/0001_schema.sql
 grant all on all tables in schema public to authenticated;
 grant all on all sequences in schema public to authenticated;
 

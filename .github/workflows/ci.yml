@@ -1,0 +1,29 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: postgres }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Pruebas SQL (esquema con RLS, como Supabase)
+        run: sudo apt-get install -y -q postgresql-client >/dev/null && test/run-sql.sh
+        env: { PGHOST: localhost, PGPORT: '5432', PGUSER: postgres, PGPASSWORD: postgres }
+      - name: Prueba unitaria del perfil
+        run: npm run test:unit
+      - name: Build de producción
+        run: npm run build
+      - name: Recorrido e2e (Playwright + backend simulado)
+        run: npx playwright install --with-deps chromium && npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: capturas, path: test/shot-*.png, if-no-files-found: ignore }

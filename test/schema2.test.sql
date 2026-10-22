@@ -26,7 +26,7 @@ grant all on storage.objects to authenticated;
 \set f '33333333-3333-3333-3333-333333333333'
 insert into auth.users values (:'a','andres@test.co'), (:'e','esposa@test.co'), (:'f','amigo@test.co');
 
-\i /home/claude/finanzas-app/supabase/migrations/0001_schema.sql
+\i supabase/migrations/0001_schema.sql
 grant all on all tables in schema public to authenticated;
 grant all on all sequences in schema public to authenticated;
 
@@ -67,7 +67,7 @@ reset role;
 
 -- ===================== MIGRACIÓN =====================
 \echo '=== Aplicando 0002'
-\i /home/claude/finanzas-app/supabase/migrations/0002_espacios.sql
+\i supabase/migrations/0002_espacios.sql
 grant all on all tables in schema public to authenticated;
 grant all on all sequences in schema public to authenticated;
 
@@ -223,6 +223,6 @@ select count(*) as hogar_quijano_ya_no_visible_0 from espacios where id=:'h';
 \echo '=== Idempotencia: volver a correr 0002 no duplica ni falla'
 reset role;
 select count(*) as espejos_antes from movimientos where espejo_de is not null \gset
-\i /home/claude/finanzas-app/supabase/migrations/0002_espacios.sql
+\i supabase/migrations/0002_espacios.sql
 select count(*) = :espejos_antes as espejos_iguales from movimientos where espejo_de is not null;
 select valor as schema_version from app_meta where clave='schema_version';

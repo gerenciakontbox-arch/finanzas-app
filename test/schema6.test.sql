@@ -4,7 +4,9 @@
 -- Líneas ERROR esperadas: 5 (evento sin autorización, operador sin rol ×2, identificar sin oferta, identificar sin comercial).
 \c fintest2
 set client_min_messages = warning;
-\i /home/claude/finanzas-app/supabase/migrations/0006_perfil.sql
+\i supabase/migrations/0006_perfil.sql
+\i supabase/migrations/0007_import_movimientos.sql
+\i supabase/migrations/0008_saldos_apertura.sql
 grant all on all tables in schema public to authenticated;
 
 \set a '11111111-1111-1111-1111-111111111111'
@@ -80,4 +82,4 @@ reset role;
 select count(*) as amigo_users_0 from auth.users where id = :'f';
 select count(*) as amigo_espacios_0 from espacios where dueno_id = :'f';
 select count(*) as amigo_consentimientos_archivados from consentimientos_archivo where user_id = :'f';
-select valor as schema_version_6 from app_meta where clave='schema_version';
+select valor as schema_version_8 from app_meta where clave='schema_version';
