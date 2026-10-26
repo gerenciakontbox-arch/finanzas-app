@@ -1,10 +1,10 @@
 // Política de tratamiento de datos personales de Akontapp. Versión = fecha; cambiarla obliga a re-autorizar.
 // Los corchetes [ ] son datos que el responsable debe completar antes de publicar.
-export const POLITICA_VERSION = '2026-10-20'
+export const POLITICA_VERSION = '2026-10-26'
 export const RESPONSABLE = { nombre: 'KONTBOX S.A.S.', nit: '[NIT]', direccion: '[Dirección], Cali, Colombia', correo: '[correo de datos personales]', telefono: '[teléfono]' }
 
 export const FINALIDADES = [
-  { k: 'servicio', obligatoria: true, titulo: 'Prestarte el servicio', texto: 'Guardar y mostrarte tus cuentas, movimientos, presupuesto, obligaciones, deudas y activos, compartirlos con los miembros de los espacios a los que te unas, enviarte el código de acceso por correo y los avisos que actives.' },
+  { k: 'servicio', obligatoria: true, titulo: 'Prestarte el servicio', texto: 'Guardar y mostrarte tus cuentas, movimientos, presupuesto, obligaciones, deudas y activos, compartirlos con los miembros de los espacios a los que te unas, enviarte el código de acceso por correo y los avisos que actives. Si cargas un extracto de tarjeta, se interpreta con un modelo de lenguaje (Anthropic) sin guardar el archivo y tachando antes tus identificadores.' },
   { k: 'analitica', obligatoria: false, titulo: 'Mejorar la app con datos de uso', texto: 'Registrar qué pantallas abres y qué acciones haces (no el contenido de lo que escribes) para entender qué funciona y qué no. Se conserva 90 días y se usa de forma agregada.' },
   { k: 'perfil', obligatoria: false, titulo: 'Construir tu perfil financiero', texto: 'Calcular a diario indicadores sobre cómo manejas tu dinero (puntualidad de pagos, disciplina presupuestal, carga de deuda, patrimonio, hábitos de registro) y mostrártelos en "Mi perfil". Solo tú lo ves.' },
   { k: 'comercial', obligatoria: false, titulo: 'Recibir ofertas de Kontbox según tu perfil', texto: 'Usar tu perfil para detectar situaciones en las que Kontbox puede ayudarte (por ejemplo, honorarios recurrentes sin empresa, varios créditos activos) y mostrarte una oferta dentro de la app. Kontbox solo conoce tu nombre y correo si tocas una oferta o aceptas que te contacten; mientras tanto te ve con un código, no con tu nombre.' },
@@ -33,7 +33,7 @@ Cada finalidad se autoriza por separado y puedes cambiar tu decisión en cualqui
 Tú y los miembros de los espacios compartidos (hogar o empresa) a los que decidas unirte, en los términos que la app muestra al compartir. El operador de la app accede a cifras agregadas y anónimas; solo accede a tu identidad en el caso de la finalidad d) descrito arriba, y cada acceso queda registrado. No se venden ni ceden datos a terceros.
 
 6. Encargados y transferencia internacional
-La app usa Supabase (base de datos y autenticación) y Netlify (alojamiento y funciones), con servidores en Estados Unidos, país que la Circular Externa 005 de 2017 de la SIC reconoce con nivel adecuado de protección. Ambos actúan como encargados bajo sus términos de servicio y medidas de seguridad (cifrado en tránsito y en reposo, control de acceso).
+La app usa Supabase (base de datos y autenticación), Netlify (alojamiento y funciones) y, solo cuando cargas un extracto de tarjeta, Anthropic (interpretación del documento mediante un modelo de lenguaje), todos con servidores en Estados Unidos, país que la Circular Externa 005 de 2017 de la SIC reconoce con nivel adecuado de protección. Actúan como encargados bajo sus términos de servicio y medidas de seguridad (cifrado en tránsito y en reposo, control de acceso). El extracto no se almacena: se procesa en memoria, con número de tarjeta, documento, nombre, dirección, correo y teléfono tachados antes del envío, y se conservan únicamente las compras y los totales extraídos.
 
 7. Seguridad
 Acceso por código de un solo uso enviado al correo, aislamiento de datos por usuario y por espacio mediante reglas en la base de datos, registro de cambios (bitácora) y de accesos del operador.

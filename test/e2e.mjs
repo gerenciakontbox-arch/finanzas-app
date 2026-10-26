@@ -246,6 +246,30 @@ await tab('Deudas'); await click('button', { hasText: 'Nuevo' })
 await fillLabel('Nombre', 'Crédito viejo'); await fillLabel('Capital inicial', 10000000); await fillLabel('Tasa mensual (%)', 1); await fillLabel('Total cuotas', 10); await fillLabel('Primera cuota', '2026-01-01'); await fillLabel('Cuotas ya pagadas antes de la app', 4); await submit('Guardar'); await wait(300)
 ok('Crédito con 4 cuotas previas: 4/10 pagadas y próxima N° 5, sin movimientos de caja', /4\/10 cuotas pagadas/.test(await T()) && /N° 5/.test(await T()) && (await DB(() => window.__sb._T.movimientos.filter(m => /Crédito viejo/.test(m.descripcion)).length)) === 0)
 
+// ===== Extracto de tarjeta (PDF leído en el servidor; aquí se simula la respuesta del lector) =====
+const NU = { modo: 'texto', estado: { banco: 'Nu', periodo_inicio: '2026-09-11', periodo_fin: '2026-10-11', fecha_corte: '2026-10-12', fecha_limite: '2026-11-03', cupo: 400000, utilizado: 284221.95, disponible: 115778.05, pago_total: 249561.95, pago_minimo: 60749.09, intereses: 4558.36, mora: 115.85, cuota_manejo: 0, seguro: null, abonos: 258.8 },
+  compras: [{ fecha: '2026-09-12', descripcion: 'Apple.Com Bill', monto: 29900, moneda_original: 'COP', cuotas: 1, cuota_actual: 1, cuotas_previas: 0, tasa_mensual: 2.12, saldo_pendiente: 0 }, { fecha: '2026-04-23', descripcion: 'Claude.Ai Subscription', monto: 71377.6, moneda_original: 'COP', cuotas: 24, cuota_actual: 6, cuotas_previas: 5, tasa_mensual: 1.97, saldo_pendiente: 53533.18 }, { fecha: '2024-12-06', descripcion: 'Openai *Chatgpt Subscr', monto: 88491.2, moneda_original: 'COP', cuotas: 24, cuota_actual: 23, cuotas_previas: 22, tasa_mensual: 1.96, saldo_pendiente: 2586.61 }],
+  otros: [{ fecha: '2026-10-08', descripcion: 'Gracias por tu pago', tipo: 'pago', monto: 34355.12 }], advertencias: [] }
+await page.route('**/.netlify/functions/extracto-leer', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(NU) }))
+await cambiarEspacio('Personal'); await tab('Config'); await click('button', { hasText: 'Cuentas' })
+await fillLabel('Nombre', 'Nu Mastercard'); await selectLabel('Tipo', 'Tarjeta crédito'); await fillLabel('Cupo (COP)', 300000); await fillLabel('Tasa mensual (%)', 2.0); await fillLabel('Día de corte', 12); await click('button', { hasText: 'Agregar cuenta' })
+await tab('Deudas'); await page.locator('[data-item="Nu Mastercard"] button[title="Cargar extracto"]').click(); await wait(200)
+ok('Cargar extracto: modal con explicación de privacidad (no se guarda, se tachan identificadores)', /Cargar extracto · Nu Mastercard/.test(await T()) && /no se guarda/.test(await T()) && /se tachan/.test(await T()))
+await page.setInputFiles('input[type=file]', { name: 'nu.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 fake') }); await wait(500)
+ok('Vista previa: estado del extracto (pago total, mínimo, límite) y 3 compras nuevas con cuotas previas', /249\.562/.test(await T()) && /60\.749/.test(await T()) && /03\/11\/2026/.test(await T()) && /Compras nuevas[\s\S]*3/.test(await T()) && /5 cuotas ya pagadas antes de la app/.test(await T()))
+ok('Cupo distinto: ofrece actualizarlo a 400.000', /Actualizar el cupo de la tarjeta a \$ 400\.000/.test(await T()))
+await submit('Aplicar (3 nuevas, 0 ajustes)'); await wait(600)
+st = await DB(() => { const T = window.__sb._T; const tc = T.cuentas.find(c => c.nombre === 'Nu Mastercard'); const cs = T.tc_cargos.filter(c => c.cuenta_id === tc.id); const ex = T.tc_extractos.find(x => x.cuenta_id === tc.id); return { n: cs.length, previas: cs.map(c => c.cuotas_previas).sort((a, b) => a - b), refs: cs.every(c => c.ref_extracto), cupo: tc.cupo, ex: ex && ex.pago_total, lim: ex && ex.fecha_limite } })
+ok('Aplicado: 3 compras con cuotas previas 0/5/22, huella guardada, cupo actualizado, estado del extracto guardado', st.n === 3 && JSON.stringify(st.previas) === '[0,5,22]' && st.refs && st.cupo === 400000 && st.ex === 249561.95 && st.lim === '2026-11-03')
+ok('La tarjeta muestra el extracto: pago total, mínimo y fecha límite', /Extracto del 12\/10\/2026 · Nu/.test(await T()) && /Pago total \$ 249\.562 · mínimo \$ 60\.749/.test(await T()) && /Paga antes del 03\/11\/2026/.test(await T()))
+ok('Saldo de la tarjeta refleja las cuotas previas (ChatGPT casi liquidado: 1 cuota pendiente)', (await DB(() => { const T = window.__sb._T; const c = T.tc_cargos.find(c => c.descripcion === 'Openai *Chatgpt Subscr'); return c.cuotas - c.cuotas_previas })) === 2)
+// segunda carga del mismo extracto → nada nuevo
+await page.locator('[data-item="Nu Mastercard"] button[title="Cargar extracto"]').click(); await wait(150); await page.setInputFiles('input[type=file]', { name: 'nu.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 fake') }); await wait(500)
+ok('Recargar el mismo extracto: 3 ya registradas, 0 nuevas', /Ya registradas[\s\S]*3/.test(await T()) && (await page.locator('button', { hasText: 'Aplicar (0 nuevas, 0 ajustes)' }).count()) === 1)
+await page.locator('button[aria-label="Cerrar"]').click(); await wait(150)
+await page.unroute('**/.netlify/functions/extracto-leer')
+await page.screenshot({ path: 'test/shot-extracto.png', fullPage: true })
+
 // ===== Lote 5 · perfil, ofertas, operador, privacidad =====
 await cambiarEspacio('Personal'); await wait(8600)   // los eventos se envían por lotes cada 8 s
 st = await DB(() => window.__sb._T.eventos.filter(e => e.user_id === 'u-andres').map(e => e.tipo))

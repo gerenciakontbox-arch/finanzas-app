@@ -16,15 +16,15 @@ App de finanzas personales/hogar/empresa. React + Vite (PWA) · Supabase (Postgr
 - `src/lib/` `auth.jsx` (sesión, espacios, consentimientos, `SCHEMA_VERSION`), `data.jsx` (carga de tablas, `db` filtrado por espacio, `saldoCuenta`, `insertar/actualizar/borrar/rpc` con eventos), `finanzas.js` (amortización, depreciación, aportes), `util.js` (`amortizacion` con sistemas fija/capital, seguro, abonos), `ui.jsx` (primitivas y tokens), `push.js`, `eventos.js`, `csv.js`.
 - `src/modules/` una pantalla por archivo; `Privacidad.jsx` (autorizaciones, derechos, Mi perfil, ofertas, operador); `MoverA.jsx` (mover ítems entre espacios).
 - `src/legal/politica.js` política y finalidades.
-- `netlify/functions/` `avisos-diarios` (push 12:00 UTC), `aviso-prueba`, `perfil-diario` (06:00 UTC), `perfil-ahora`, `_push.mjs`, `_perfil.mjs` (indicadores y `SENALES`).
-- `supabase/migrations/` 0001 base → 0008. `supabase/email-magic-link.html` plantilla del código OTP (`{{ .Token }}`).
+- `netlify/functions/` `avisos-diarios` (push 12:00 UTC), `aviso-prueba`, `perfil-diario` (06:00 UTC), `perfil-ahora`, `extracto-leer` (PDF/foto → JSON con Anthropic; `_pdf.mjs` extrae y tacha), `_push.mjs`, `_perfil.mjs` (indicadores y `SENALES`).
+- `supabase/migrations/` 0001 base → 0009. `supabase/email-magic-link.html` plantilla del código OTP (`{{ .Token }}`).
 - `test/` `run-sql.sh`, `schema*.test.sql`, `mockSupabase.js`, `e2e.mjs`, `perfil.test.mjs`, capturas `shot-*.png`.
 
 ## Comandos
 ```
 npm run build                      # producción
 npm run test:unit                  # indicadores del perfil
-npm run test:e2e                   # build de prueba + Playwright (82 verificaciones)
+npm run test:e2e                   # build de prueba + Playwright (89 verificaciones)
 PGHOST=... PGPORT=... PGUSER=postgres npm run test:sql   # Postgres 16; crea la base fintest2
 ```
 Postgres local de este entorno: `su pguser -c "/usr/lib/postgresql/16/bin/pg_ctl -D /home/pguser/pg/data -l /home/pguser/pg/log start -o '-p 5499 -k /tmp'"` y `PGHOST=/tmp PGPORT=5499`. Chromium: en este entorno `CHROME_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npm run test:e2e` (en CI Playwright instala el suyo).
@@ -35,7 +35,8 @@ Postgres local de este entorno: `su pguser -c "/usr/lib/postgresql/16/bin/pg_ctl
 - **Presupuesto → Programado**: `programar_presupuesto` crea la serie; el rubro queda bloqueado (trigger `presupuesto_guardia`) y se cierra al pagar desde Programado, que vincula o crea el rubro del mes siguiente (`auto_creado`).
 - **Créditos**: sistema `fija`/`capital`, `seguro_mensual`, `cuotas_previas`, abonos a capital (`abonos_capital`, modo plazo/cuota), pago anticipado (> 5 días) exige motivo.
 - **Activos**: depreciación lineal mensual (`vida_util_meses` 24–120, `valor_residual`, `valor_base`, `fecha_base`); inmuebles no deprecian.
+- **Extractos TC**: `tc_extractos` por corte; compras nuevas con `cuotas_previas = cuota_actual − 1`; huella `tc_cargos.ref_extracto`; conciliación en `src/lib/extracto.js`. El archivo nunca se guarda; el texto se tacha antes de salir (regla 5).
 - **Perfil y señales**: `perfil_usuario` (indicadores + `senales`), `senales_def` + `SENALES` en `_perfil.mjs`, `ofertas` (mostrada → tocada → aceptada/rechazada → convertida). Nueva señal = fila + función con la misma clave.
 
 ## Historial de decisiones del dueño (no reabrir sin motivo)
-Historial no se mueve con un activo entre espacios · miembros ven nombre de cuentas ajenas, nunca saldo · cuota variable = abono constante a capital · seguro fijo mensual dentro de la cuota · anticipo N = 5 días con motivo; abono a capital recalcula · inmuebles no deprecian; activos previos se remiden (valor base + fecha base) · presupuesto anual cargado una vez; programable desde ítem o CSV; lo no programado queda en presupuesto · finalidad comercial opcional y apagada por defecto; el usuario ve lo mismo que el operador · Activos y Ajustes como pestañas propias.
+Historial no se mueve con un activo entre espacios · miembros ven nombre de cuentas ajenas, nunca saldo · cuota variable = abono constante a capital · seguro fijo mensual dentro de la cuota · anticipo N = 5 días con motivo; abono a capital recalcula · inmuebles no deprecian; activos previos se remiden (valor base + fecha base) · presupuesto anual cargado una vez; programable desde ítem o CSV; lo no programado queda en presupuesto · finalidad comercial opcional y apagada por defecto; el usuario ve lo mismo que el operador · Activos y Ajustes como pestañas propias · extractos: modelo por API, sin guardar el archivo y tachando identificadores; solo se crean compras (intereses/manejo/seguros son extras de la factura); la app muestra diferencias y el usuario ajusta.

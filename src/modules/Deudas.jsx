@@ -3,6 +3,7 @@ import { useData, useIndices } from '../lib/data'
 import { useAuth } from '../lib/auth'
 import { Kpi, Card, Icon, IcoText, Modal, Field, inp, sel, SaveBtn, CancelBtn, SmallBtn, PrimaryBtn, Aviso, useForm, T } from '../lib/ui'
 import MoverA from './MoverA'
+import ImportarExtracto, { EstadoExtracto } from './Extracto'
 import { fmtCOP, fmtDate, today, daysLeft, cfFija, TC, TIPOS_DEUDA } from '../lib/util'
 import { indicePagadas, resumenDeuda, resumenTarjeta } from '../lib/finanzas'
 import { parseMonto } from '../lib/csv'
@@ -180,7 +181,8 @@ function Tarjeta({ r, esDueno, onMover }) {
     try { modal === 'compra' ? await insertar('tc_cargos', row) : await actualizar('tc_cargos', form.id, row); setModal(null) } catch (e) { alert(e.message) }
   }
   // Factura
-  const openFactura = () => { const incl = {}, ext = {}; rAll.activos.forEach(c => { incl[c.id] = true; ext[c.id] = String(c.next.total) }); setForm({ fecha: today(), cuenta_pago_id: cuentasCaja[0]?.id || null, incl, ext, manejo: '', mora: '', seguros: '', otros: '', presupuesto_id: '' }); setModal('factura') }
+  const ultimoExtracto = db.tc_extractos.filter(x => x.cuenta_id === tc.id).sort((a, b) => b.fecha_corte.localeCompare(a.fecha_corte))[0] || null
+  const openFactura = (ex = ultimoExtracto) => { const incl = {}, ext = {}; rAll.activos.forEach(c => { incl[c.id] = true; ext[c.id] = String(c.next.total) }); setForm({ fecha: today(), cuenta_pago_id: cuentasCaja[0]?.id || null, incl, ext, manejo: ex?.cuota_manejo ? String(ex.cuota_manejo) : '', mora: ex?.mora ? String(ex.mora) : '', seguros: ex?.seguro ? String(ex.seguro) : '', otros: ex?.intereses ? String(ex.intereses) : '', presupuesto_id: '' }); setModal('factura') }
   const inclList = rAll.activos.filter(c => form.incl?.[c.id]); const esperado = inclList.reduce((a, c) => a + c.next.total, 0); const extracto = inclList.reduce((a, c) => a + (parseMonto(form.ext?.[c.id]) || 0), 0)
   const fM = parseMonto(form.manejo) || 0, fMo = parseMonto(form.mora) || 0, fS = parseMonto(form.seguros) || 0, fO = parseMonto(form.otros) || 0; const extras = fM + fMo + fS + fO; const totalPagar = extracto + extras; const dif = extracto - esperado
   const saveFactura = async () => {
@@ -192,7 +194,7 @@ function Tarjeta({ r, esDueno, onMover }) {
   const usoPct = r.cupo > 0 ? Math.min(100, Math.round(rAll.saldo / r.cupo * 100)) : 0
 
   return (
-    <div style={{ background: '#F3F1F8', borderRadius: 16, overflow: 'hidden' }}>
+    <div data-item={tc.nombre} style={{ background: '#F3F1F8', borderRadius: 16, overflow: 'hidden' }}>
       <div onClick={() => setOpen(!open)} style={{ padding: '14px 16px', cursor: 'pointer', background: '#4B1D9E', color: '#fff' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div><div style={{ fontSize: 11, opacity: 0.75, fontWeight: 600 }}>Tarjeta de crédito{!esDueno ? ` · de ${nombreMiembro(duenoCuenta(tc))}` : ''}</div><div style={{ fontWeight: 800, fontSize: 15, marginTop: 2 }}>{tc.nombre}</div><div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>{tc.banco || ''}{tc.ultimos4 ? ` •••• ${tc.ultimos4}` : ''} · corte día {corte}{!esPersonal ? ` · compras de ${espacio.nombre}` : ''}</div></div>
@@ -205,7 +207,9 @@ function Tarjeta({ r, esDueno, onMover }) {
         </div>
         {esDueno && r.cupo > 0 && <div style={{ marginTop: 10 }}><div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 99, height: 6 }}><div style={{ height: 6, borderRadius: 99, background: usoPct > 80 ? '#F4A79D' : usoPct > 50 ? '#FFD166' : '#7FD6AD', width: `${usoPct}%` }} /></div><div style={{ fontSize: 11, opacity: 0.75, marginTop: 3 }}>{usoPct}% del cupo ({fmtCOP(r.cupo)}) · {rAll.activos.length} compra{rAll.activos.length !== 1 ? 's' : ''} activa{rAll.activos.length !== 1 ? 's' : ''}{rAll.activos.length !== r.activos.length ? ` (${r.activos.length} en este espacio)` : ''}</div></div>}
       </div>
+      {esDueno && <EstadoExtracto tc={tc} />}
       <div style={{ display: 'flex', gap: 8, padding: '12px 14px', borderBottom: open ? '1px solid #EBE9F1' : 'none' }}>
+        {esDueno && <button onClick={() => setModal('extracto')} title="Cargar extracto" style={{ width: 40, height: 40, flexShrink: 0, background: '#fff', color: T.morado, border: 'none', borderRadius: 20, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="file" size={18} /></button>}
         <button onClick={() => { setForm(emptyC); setModal('compra') }} style={{ flex: 1, background: '#fff', color: '#1B1B1F', border: 'none', borderRadius: 20, height: 40, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}><IcoText name="cart" size={14}>Registrar compra</IcoText></button>
         {esPersonal && esDueno ? <button onClick={openFactura} disabled={!rAll.activos.length} style={{ flex: 1, background: rAll.activos.length ? '#4B1D9E' : '#EBE9F1', color: rAll.activos.length ? '#fff' : '#9A9AA0', border: 'none', borderRadius: 20, height: 40, fontWeight: 800, fontSize: 13, fontFamily: 'inherit', cursor: rAll.activos.length ? 'pointer' : 'not-allowed' }}><IcoText name="banknote" size={14}>Pagar factura</IcoText></button> : <div style={{ flex: 1, fontSize: 10, color: '#6E6E73', display: 'flex', alignItems: 'center', padding: '0 6px' }}>{esDueno ? 'La factura se paga desde tu espacio personal.' : `La factura la paga ${nombreMiembro(duenoCuenta(tc))} desde su espacio personal.`}</div>}
       </div>
@@ -254,6 +258,7 @@ function Tarjeta({ r, esDueno, onMover }) {
         <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={() => setModal(null)} /><SaveBtn onClick={saveCompra} disabled={!form.descripcion || montoC <= 0 || cuotasC < 1}>{modal === 'compra' ? 'Registrar compra' : 'Guardar'}</SaveBtn></div>
       </Modal>}
 
+      {modal === 'extracto' && <ImportarExtracto tc={tc} r={r} saldoApp={rAll.saldo} onClose={() => setModal(null)} />}
       {modal === 'factura' && <Modal title={`Pagar factura · ${tc.nombre}`} onClose={() => setModal(null)}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
           <Field label="Fecha de pago"><input type="date" value={form.fecha} onChange={e => sf('fecha', e.target.value)} style={inp} /></Field>

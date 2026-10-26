@@ -7,7 +7,7 @@ import { configurarEventos, track } from './eventos'
 import { useAuth } from './auth'
 import { TC } from './util'
 
-const TABLAS = ['categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'programado', 'programado_adjuntos', 'movimientos', 'perfil_usuario', 'ofertas', 'senales_def']
+const TABLAS = ['categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'programado', 'programado_adjuntos', 'movimientos', 'perfil_usuario', 'ofertas', 'senales_def', 'tc_extractos']
 const Ctx = createContext(null)
 export const useData = () => useContext(Ctx)
 
@@ -81,6 +81,7 @@ export function DataProvider({ children }) {
       presupuesto: all.presupuesto.filter(x => x.espacio_id === e),
       deudas: all.deudas.filter(x => x.espacio_id === e),
       tc_cargos: all.tc_cargos.filter(x => x.espacio_id === e),
+      tc_extractos: (all.tc_extractos || []).filter(x => x.espacio_id === e),
       cuotas_pagadas: all.cuotas_pagadas.filter(x => x.espacio_id === e),
       abonos_capital: (all.abonos_capital || []).filter(x => x.espacio_id === e),
       programado: all.programado.filter(x => x.espacio_id === e),

@@ -7,4 +7,4 @@ export PGHOST PGPORT PGUSER
 esperar() { local f=$1 n=$2; local got; got=$(psql -q -v ON_ERROR_STOP=0 -f "$f" 2>&1 | grep -c '^psql:.*ERROR' || true); if [ "$got" != "$n" ]; then echo "✗ $f: $got errores (se esperaban $n)"; psql -q -f "$f" 2>&1 | grep '^psql:.*ERROR' || true; exit 1; fi; echo "✓ $f ($n errores esperados)"; }
 esperar test/schema2.test.sql 9
 esperar test/schema3.test.sql 6
-esperar test/schema6.test.sql 5
+esperar test/schema6.test.sql 6

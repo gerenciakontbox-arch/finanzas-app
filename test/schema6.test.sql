@@ -7,6 +7,7 @@ set client_min_messages = warning;
 \i supabase/migrations/0006_perfil.sql
 \i supabase/migrations/0007_import_movimientos.sql
 \i supabase/migrations/0008_saldos_apertura.sql
+\i supabase/migrations/0009_extractos_tc.sql
 grant all on all tables in schema public to authenticated;
 
 \set a '11111111-1111-1111-1111-111111111111'
@@ -82,4 +83,13 @@ reset role;
 select count(*) as amigo_users_0 from auth.users where id = :'f';
 select count(*) as amigo_espacios_0 from espacios where dueno_id = :'f';
 select count(*) as amigo_consentimientos_archivados from consentimientos_archivo where user_id = :'f';
-select valor as schema_version_8 from app_meta where clave='schema_version';
+\echo '=== Extractos de tarjeta: estado por corte, huella única por compra'
+reset role;
+select id as pa from espacios where tipo='personal' and dueno_id=:'a' \gset
+select id as tcid from cuentas where espacio_id=:'pa' and tipo='Tarjeta crédito' limit 1 \gset
+insert into tc_extractos(espacio_id, cuenta_id, banco, fecha_corte, fecha_limite, pago_total, pago_minimo, utilizado, cupo) values (:'pa', :'tcid', 'Nu', '2026-10-12', '2026-11-03', 249561.95, 60749.09, 284221.95, 400000);
+select banco, pago_total from tc_extractos where cuenta_id=:'tcid';
+insert into tc_cargos(espacio_id, cuenta_id, fecha, descripcion, monto, cuotas, cuotas_previas, primera_cuota, ref_extracto) values (:'pa', :'tcid', '2026-04-23', 'Claude.Ai Subscription', 71377.6, 24, 5, '2026-05-12', '2026-04-23|71378|claudeaisubscription');
+\echo '--- misma huella en la misma tarjeta debe fallar'
+insert into tc_cargos(espacio_id, cuenta_id, fecha, descripcion, monto, cuotas, primera_cuota, ref_extracto) values (:'pa', :'tcid', '2026-04-23', 'Claude.Ai Subscription', 71377.6, 24, '2026-05-12', '2026-04-23|71378|claudeaisubscription');
+select valor as schema_version_9 from app_meta where clave='schema_version';
