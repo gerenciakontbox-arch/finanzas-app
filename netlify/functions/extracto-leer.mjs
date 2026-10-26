@@ -77,7 +77,7 @@ export default async (req) => {
   } else return json({ error: 'Formato no soportado: sube un PDF o una foto (JPG/PNG).' }, 400)
 
   try {
-    const r = await cliente.messages.create({ model: MODELO(), max_tokens: 8000, temperature: 0, system: SISTEMA, messages: [{ role: 'user', content: contenido }] })
+    const r = await cliente.messages.create({ model: MODELO(), max_tokens: 8000, system: SISTEMA, messages: [{ role: 'user', content: contenido }] })
     const texto = r.content.filter(c => c.type === 'text').map(c => c.text).join('\n')
     const out = normalizar(extraerJson(texto))
     out.modo = modo; out.modelo = MODELO(); out.uso = { entrada: r.usage?.input_tokens, salida: r.usage?.output_tokens }
