@@ -8,10 +8,9 @@ import { Modal, Field, inp, sel, SaveBtn, CancelBtn, SmallBtn, Aviso, Icon, Kpi,
 import { fmtCOP, fmtDate, today, addMonths } from '../lib/util'
 import { conciliar, diferenciaSaldo } from '../lib/extracto'
 import { supabase } from '../lib/supabase'
+import { textoDePdf } from '../lib/pdfTexto'
+import { tachar } from '../lib/tachar'
 
-const leerBase64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(f) })
-// Las fotos se reducen en el teléfono (máx. 1800 px, JPEG) antes de enviarlas: pesan menos y el límite del servidor es 5 MB.
-const reducirImagen = f => new Promise((res, rej) => { const img = new Image(); const url = URL.createObjectURL(f); img.onload = () => { const k = Math.min(1, 1800 / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); res({ base64: c.toDataURL('image/jpeg', 0.85).split(',')[1], tipo: 'image/jpeg' }) }; img.onerror = rej; img.src = url })
 const esperar = ms => new Promise(r => setTimeout(r, ms))
 
 export default function ImportarExtracto({ tc, r, saldoApp, onClose }) {
@@ -21,18 +20,21 @@ export default function ImportarExtracto({ tc, r, saldoApp, onClose }) {
   const catDefault = db.categorias.find(c => c.activa !== false)?.id || null
 
   const leer = async file => {
-    setErr(''); setBusy('Preparando el archivo…')
+    setErr(''); setBusy('Leyendo el PDF en tu dispositivo…')
     let lecturaId = null
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      const esImagen = /^image\//.test(file.type)
-      const { base64, tipo } = esImagen ? await reducirImagen(file) : { base64: await leerBase64(file), tipo: file.type || 'application/pdf' }
+      if (!/pdf/i.test(file.type) && !/\.pdf$/i.test(file.name)) throw new Error('Por ahora solo se aceptan extractos en PDF (el archivo que envía el banco).')
+      let texto = ''; try { texto = (await textoDePdf(file)).texto } catch (e) { throw new Error('No se pudo abrir el PDF. Si está protegido con contraseña, ábrelo con ella y guárdalo sin protección.') }
+      if (texto.replace(/\s+/g, '').length < 400) throw new Error('Este PDF es una imagen escaneada, sin texto. Pide al banco el extracto original en PDF.')
+      const limpio = tachar(texto, [miembroActual?.nombre, session.user.email?.split('@')[0]])
+      if (limpio.length > 200000) throw new Error('El extracto es demasiado largo para leerlo de una vez.')
       // 1) fila pendiente (solo la ve este usuario); 2) la función de fondo procesa y escribe el resultado; 3) se consulta hasta que esté lista
       const { data: fila, error: e1 } = await supabase.from('tc_lecturas').insert({ user_id: session.user.id, cuenta_id: tc.id }).select().single(); if (e1) throw e1
       lecturaId = fila.id
       setBusy('Leyendo el extracto… (15–40 segundos)')
-      const res = await fetch('/.netlify/functions/extracto-leer-background', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lectura_id: fila.id, token: session.access_token, base64, tipo, nombres: [miembroActual?.nombre] }) })
-      if (!res.ok && res.status !== 202) throw new Error('El servidor no aceptó el archivo (' + res.status + ').')
+      const res = await fetch('/.netlify/functions/extracto-leer-background', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lectura_id: fila.id, token: session.access_token, texto: limpio, nombres: [miembroActual?.nombre] }) })
+      if (!res.ok && res.status !== 202) throw new Error(res.status === 413 ? 'El extracto es demasiado grande para enviarlo.' : 'El servidor no aceptó el extracto (' + res.status + ').')
       let out = null
       for (let i = 0; i < 90; i++) {
         await esperar(2000)
@@ -71,17 +73,17 @@ export default function ImportarExtracto({ tc, r, saldoApp, onClose }) {
   return (
     <Modal title={`Cargar extracto · ${tc.nombre}`} onClose={onClose}>
       {fase === 'archivo' && <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <Aviso tipo="info">Sube el extracto en <b>PDF</b> (el que te manda el banco) o una <b>foto</b>. Se lee con un modelo de lenguaje y <b>no se guarda</b>: antes de enviarlo se tachan tu nombre, documento, número de tarjeta, dirección, correo y teléfono. Después revisas qué compras se crean; nada entra sin tu confirmación.</Aviso>
+        <Aviso tipo="info">Sube el extracto en <b>PDF</b> (el que te manda el banco). El PDF <b>no sale de tu dispositivo</b>: aquí mismo se extrae el texto y se tachan tu nombre, documento, número de tarjeta, dirección, correo y teléfono; solo ese texto se envía para interpretarlo, y no se guarda. Después revisas qué compras se crean; nada entra sin tu confirmación.</Aviso>
         <div style={{ fontSize: 12, color: T.gris, lineHeight: 1.5 }}>Sirve para dos cosas: <b>la primera carga</b> de una tarjeta (trae todas las compras vigentes con las cuotas que ya pagaste) y <b>el cargue mensual</b> (solo entran las compras nuevas; las demás se reconocen y no se duplican).</div>
         <div onClick={() => !busy && fileRef.current.click()} style={{ border: '2px dashed #D9D2EA', borderRadius: 14, padding: '28px 16px', textAlign: 'center', cursor: busy ? 'wait' : 'pointer', background: T.superficie }}>
-          <div style={{ color: T.morado, marginBottom: 8 }}><Icon name={busy ? 'clock' : 'upload'} size={30} sw={1.5} /></div><div style={{ fontWeight: 700, fontSize: 14, color: T.moradoOscuro }}>{busy || 'Toca para elegir el PDF o la foto'}</div>
-          <input ref={fileRef} type="file" accept=".pdf,image/*,application/pdf" style={{ display: 'none' }} onChange={e => { const f = e.target.files[0]; if (f) leer(f); e.target.value = '' }} />
+          <div style={{ color: T.morado, marginBottom: 8 }}><Icon name={busy ? 'clock' : 'upload'} size={30} sw={1.5} /></div><div style={{ fontWeight: 700, fontSize: 14, color: T.moradoOscuro }}>{busy || 'Toca para elegir el PDF'}</div>
+          <input ref={fileRef} type="file" accept=".pdf,application/pdf" style={{ display: 'none' }} onChange={e => { const f = e.target.files[0]; if (f) leer(f); e.target.value = '' }} />
         </div>
         {err && <Aviso tipo="err">{err}</Aviso>}
       </div>}
       {fase === 'revisar' && lectura && <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ background: T.morado, color: '#fff', borderRadius: 16, padding: '14px 16px' }}>
-          <div style={{ fontSize: 11, opacity: 0.8, fontWeight: 600 }}>{lectura.estado.banco || 'Extracto'} · corte {fmtDate(lectura.estado.fecha_corte)}{lectura.modo !== 'texto' ? ' · leído de imagen' : ''}</div>
+          <div style={{ fontSize: 11, opacity: 0.8, fontWeight: 600 }}>{lectura.estado.banco || 'Extracto'} · corte {fmtDate(lectura.estado.fecha_corte)}</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
             <div><div style={{ fontSize: 11, opacity: 0.8 }}>Pago total</div><div style={{ fontWeight: 800, fontSize: 18 }}>{fmtCOP(lectura.estado.pago_total)}</div></div>
             <div><div style={{ fontSize: 11, opacity: 0.8 }}>Pago mínimo</div><div style={{ fontWeight: 800, fontSize: 18 }}>{fmtCOP(lectura.estado.pago_minimo)}</div></div>

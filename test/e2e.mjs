@@ -3,9 +3,10 @@ import { chromium } from 'playwright'
 import { createServer } from 'http'
 import { readFileSync, existsSync } from 'fs'
 import path from 'path'
+const PDF_PRUEBA = readFileSync('test/fixture-extracto.pdf')
 
 const root = path.resolve('test/dist')
-const server = createServer((req, res) => { let p = path.join(root, req.url.split('?')[0]); if (!existsSync(p) || p.endsWith('/')) p = path.join(root, 'index.html'); const ext = path.extname(p); res.setHeader('Content-Type', { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.json': 'application/json', '.png': 'image/png' }[ext] || 'application/octet-stream'); res.end(readFileSync(p)) }).listen(4177)
+const server = createServer((req, res) => { let p = path.join(root, req.url.split('?')[0]); if (!existsSync(p) || p.endsWith('/')) p = path.join(root, 'index.html'); const ext = path.extname(p); res.setHeader('Content-Type', { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.json': 'application/json', '.png': 'image/png' }[ext] || 'application/octet-stream'); res.end(readFileSync(p)) }).listen(4177)
 
 const results = []; const ok = (n, c) => { results.push([c ? 'PASS' : 'FAIL', n]); if (!c) console.log('   ✗', n) }
 const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}); const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
@@ -250,12 +251,14 @@ ok('Crédito con 4 cuotas previas: 4/10 pagadas y próxima N° 5, sin movimiento
 const NU = { modo: 'texto', estado: { banco: 'Nu', periodo_inicio: '2026-09-11', periodo_fin: '2026-10-11', fecha_corte: '2026-10-12', fecha_limite: '2026-11-03', cupo: 400000, utilizado: 284221.95, disponible: 115778.05, pago_total: 249561.95, pago_minimo: 60749.09, intereses: 4558.36, mora: 115.85, cuota_manejo: 0, seguro: null, abonos: 258.8 },
   compras: [{ fecha: '2026-09-12', descripcion: 'Apple.Com Bill', monto: 29900, moneda_original: 'COP', cuotas: 1, cuota_actual: 1, cuotas_previas: 0, tasa_mensual: 2.12, saldo_pendiente: 0 }, { fecha: '2026-04-23', descripcion: 'Claude.Ai Subscription', monto: 71377.6, moneda_original: 'COP', cuotas: 24, cuota_actual: 6, cuotas_previas: 5, tasa_mensual: 1.97, saldo_pendiente: 53533.18 }, { fecha: '2024-12-06', descripcion: 'Openai *Chatgpt Subscr', monto: 88491.2, moneda_original: 'COP', cuotas: 24, cuota_actual: 23, cuotas_previas: 22, tasa_mensual: 1.96, saldo_pendiente: 2586.61 }],
   otros: [{ fecha: '2026-10-08', descripcion: 'Gracias por tu pago', tipo: 'pago', monto: 34355.12 }], advertencias: [] }
-await page.route('**/.netlify/functions/extracto-leer-background', async route => { const b = JSON.parse(route.request().postData()); await page.evaluate(([id, r]) => { const l = window.__sb._T.tc_lecturas.find(x => x.id === id); Object.assign(l, { estado: 'lista', resultado: r }) }, [b.lectura_id, NU]); await route.fulfill({ status: 202, body: '' }) })
+let cuerpoLectura = null
+await page.route('**/.netlify/functions/extracto-leer-background', async route => { const b = JSON.parse(route.request().postData()); cuerpoLectura = b; await page.evaluate(([id, r]) => { const l = window.__sb._T.tc_lecturas.find(x => x.id === id); Object.assign(l, { estado: 'lista', resultado: r }) }, [b.lectura_id, NU]); await route.fulfill({ status: 202, body: '' }) })
 await cambiarEspacio('Personal'); await tab('Config'); await click('button', { hasText: 'Cuentas' })
 await fillLabel('Nombre', 'Nu Mastercard'); await selectLabel('Tipo', 'Tarjeta crédito'); await fillLabel('Cupo (COP)', 300000); await fillLabel('Tasa mensual (%)', 2.0); await fillLabel('Día de corte', 12); await click('button', { hasText: 'Agregar cuenta' })
 await tab('Deudas'); await page.locator('[data-item="Nu Mastercard"] button[title="Cargar extracto"]').click(); await wait(200)
-ok('Cargar extracto: modal con explicación de privacidad (no se guarda, se tachan identificadores)', /Cargar extracto · Nu Mastercard/.test(await T()) && /no se guarda/.test(await T()) && /se tachan/.test(await T()))
-await page.setInputFiles('input[type=file]', { name: 'nu.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 fake') }); await wait(2800)
+ok('Cargar extracto: modal con explicación de privacidad (el PDF no sale del dispositivo, se tachan identificadores)', /Cargar extracto · Nu Mastercard/.test(await T()) && /no sale de tu dispositivo/.test(await T()) && /se tachan/.test(await T()))
+await page.setInputFiles('input[type=file]', { name: 'nu.pdf', mimeType: 'application/pdf', buffer: PDF_PRUEBA }); await wait(3500)
+ok('Al servidor viaja solo texto extraído en el dispositivo (sin archivo), con las compras legibles', !!cuerpoLectura && !cuerpoLectura.base64 && /Compra de prueba numero 3/.test(cuerpoLectura.texto))
 ok('Vista previa: estado del extracto (pago total, mínimo, límite) y 3 compras nuevas con cuotas previas', /249\.562/.test(await T()) && /60\.749/.test(await T()) && /03\/11\/2026/.test(await T()) && /Compras nuevas[\s\S]*3/.test(await T()) && /5 cuotas ya pagadas antes de la app/.test(await T()))
 ok('Cupo distinto: ofrece actualizarlo a 400.000', /Actualizar el cupo de la tarjeta a \$ 400\.000/.test(await T()))
 await submit('Aplicar (3 nuevas, 0 ajustes)'); await wait(600)
@@ -264,7 +267,7 @@ ok('Aplicado: 3 compras con cuotas previas 0/5/22, huella guardada, cupo actuali
 ok('La tarjeta muestra el extracto: pago total, mínimo y fecha límite', /Extracto del 12\/10\/2026 · Nu/.test(await T()) && /Pago total \$ 249\.562 · mínimo \$ 60\.749/.test(await T()) && /Paga antes del 03\/11\/2026/.test(await T()))
 ok('Saldo de la tarjeta refleja las cuotas previas (ChatGPT casi liquidado: 1 cuota pendiente)', (await DB(() => { const T = window.__sb._T; const c = T.tc_cargos.find(c => c.descripcion === 'Openai *Chatgpt Subscr'); return c.cuotas - c.cuotas_previas })) === 2)
 // segunda carga del mismo extracto → nada nuevo
-await page.locator('[data-item="Nu Mastercard"] button[title="Cargar extracto"]').click(); await wait(150); await page.setInputFiles('input[type=file]', { name: 'nu.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 fake') }); await wait(2800)
+await page.locator('[data-item="Nu Mastercard"] button[title="Cargar extracto"]').click(); await wait(150); await page.setInputFiles('input[type=file]', { name: 'nu.pdf', mimeType: 'application/pdf', buffer: PDF_PRUEBA }); await wait(3500)
 ok('Recargar el mismo extracto: 3 ya registradas, 0 nuevas', /Ya registradas[\s\S]*3/.test(await T()) && (await page.locator('button', { hasText: 'Aplicar (0 nuevas, 0 ajustes)' }).count()) === 1)
 await page.locator('button[aria-label="Cerrar"]').click(); await wait(150)
 await page.unroute('**/.netlify/functions/extracto-leer-background')

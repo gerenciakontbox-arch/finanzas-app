@@ -1,7 +1,7 @@
 // Prueba unitaria: normalización de lo que devuelve el modelo (caso Nu y caso Falabella) y conciliación con compras existentes.
 import { normalizar } from '../netlify/functions/extracto-leer-background.mjs'
 import { conciliar, huella } from '../src/lib/extracto.js'
-import { tachar } from '../netlify/functions/_pdf.mjs'
+import { tachar } from '../src/lib/tachar.js'
 const ok = (n, c) => { console.log(c ? 'PASS' : 'FAIL', n); if (!c) process.exitCode = 1 }
 
 // Lo que el modelo devolvería para el extracto Nu de octubre 2026 (valores tomados del PDF real)

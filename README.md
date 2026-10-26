@@ -43,7 +43,7 @@ npm run build            # genera dist/
 ```
 
 ## Pruebas
-`test/e2e.mjs` recorre los flujos principales (89 verificaciones) contra un backend simulado en memoria (`test/mockSupabase.js`): espacios, cuentas habilitadas, aportes espejo, factura partida, privacidad entre miembros y entre hogares. Requiere Chromium de Playwright:
+`test/e2e.mjs` recorre los flujos principales (90 verificaciones) contra un backend simulado en memoria (`test/mockSupabase.js`): espacios, cuentas habilitadas, aportes espejo, factura partida, privacidad entre miembros y entre hogares. Requiere Chromium de Playwright:
 ```
 npx vite build -c test/vite.test.config.js && node test/e2e.mjs
 ```
@@ -53,7 +53,7 @@ psql -h /tmp -p 5499 -U postgres -f test/schema2.test.sql && psql -h /tmp -p 549
 ```
 
 ## Extracto de tarjeta por PDF o foto (migración 0009)
-Deudas → tarjeta → botón de documento. El archivo va a `netlify/functions/extracto-leer-background.mjs` (función **de fondo**: Netlify responde 202 y deja correr hasta 15 min; las funciones normales se cortan a los 10 s). La app crea una fila en `tc_lecturas`, la función escribe allí el resultado y la app lo consulta cada 2 s y borra la fila. Extrae el texto del PDF (`_pdf.mjs`, con deduplicación de negritas y **tachado** de tarjeta, documento, nombre, dirección, correo y teléfono) y lo interpreta con el modelo de Anthropic (`ANTHROPIC_API_KEY` en Netlify; `ANTHROPIC_MODEL` opcional, por defecto `claude-sonnet-5-5`). Si el PDF no tiene texto o es una foto, se envía el documento/imagen tal cual. Nada se guarda: solo las compras y totales extraídos (`tc_extractos.lineas`, sin datos personales).
+Deudas → tarjeta → botón de documento. Solo PDF. **El PDF no sale del dispositivo**: `src/lib/pdfTexto.js` (pdf.js en el navegador, cargado bajo demanda) extrae el texto con disposición por líneas y `src/lib/tachar.js` tacha tarjeta, documento, nombre, dirección, correo y teléfono; solo ese texto (~10 KB) viaja a `netlify/functions/extracto-leer-background.mjs` (función **de fondo**: Netlify responde 202 y deja correr hasta 15 min; las normales se cortan a los 10 s y las de fondo aceptan máximo 256 KB por envío, por eso no se envía el archivo). La app crea una fila en `tc_lecturas`, la función escribe allí el resultado y la app lo consulta cada 2 s y borra la fila. El servidor vuelve a tachar y lo interpreta con el modelo de Anthropic (`ANTHROPIC_API_KEY` en Netlify; `ANTHROPIC_MODEL` opcional, por defecto `claude-sonnet-5-5`). Un PDF escaneado (sin texto) o una foto no se aceptan por ahora. Nada se guarda: solo las compras y totales extraídos (`tc_extractos.lineas`, sin datos personales).
 La app concilia (`src/lib/extracto.js`): compras nuevas se crean con `cuotas_previas = cuota_actual − 1` (sirve para la primera carga de una tarjeta ya usada), las existentes se reconocen por huella (`tc_cargos.ref_extracto`) o por fecha+monto+descripción, y las que tienen cuotas desfasadas se ofrecen como ajuste. El estado del corte (pago total, mínimo, límite, cupo) se guarda en `tc_extractos` y pre-llena los extras al pagar la factura. Probado con extractos reales de Nu y Banco Falabella (`test/extracto.test.mjs`). Costo aproximado: 1–5 centavos de USD por extracto.
 
 ## Saldos de apertura (migración 0008)

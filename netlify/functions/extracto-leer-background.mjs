@@ -1,11 +1,11 @@
-// Lee un extracto de tarjeta de crédito (PDF o foto) EN SEGUNDO PLANO (sufijo -background: Netlify responde
-// 202 de inmediato y deja correr hasta 15 min) y escribe el resultado en tc_lecturas (compras, otros cargos y
-// estado de la tarjeta, sin datos personales). El archivo NO se guarda: se procesa en memoria y se descarta.
-// Antes de enviar texto al modelo se tachan identificadores (tarjeta, documento, correo, teléfono, dirección, nombre).
+// Interpreta el TEXTO de un extracto de tarjeta EN SEGUNDO PLANO (sufijo -background: Netlify responde 202 de
+// inmediato y deja correr hasta 15 min) y escribe el resultado en tc_lecturas (compras, otros cargos y estado de
+// la tarjeta, sin datos personales). El PDF nunca llega aquí: la app extrae el texto en el dispositivo y lo tacha
+// (src/lib/pdfTexto.js + src/lib/tachar.js); el servidor vuelve a tachar por si acaso. Límite de Netlify: 256 KB por envío.
 // Variables en Netlify: ANTHROPIC_API_KEY (obligatoria), ANTHROPIC_MODEL (opcional, por defecto claude-sonnet-5-5).
 import Anthropic from '@anthropic-ai/sdk'
 import { admin, env } from './_push.mjs'
-import { textoDePdf, tachar } from './_pdf.mjs'
+import { tachar } from './_pdf.mjs'
 
 const MODELO = () => env('ANTHROPIC_MODEL') || 'claude-sonnet-5-5'
 
@@ -58,31 +58,21 @@ export function normalizar(raw) {
 export default async (req) => {
   if (req.method !== 'POST') return new Response('Método no permitido', { status: 405 })
   let body; try { body = await req.json() } catch { return new Response('Cuerpo inválido', { status: 400 }) }
-  const { lectura_id, token, base64, tipo, nombres = [] } = body || {}
-  if (!lectura_id || !token || !base64) return new Response('Faltan datos', { status: 400 })
+  const { lectura_id, token, texto, nombres = [] } = body || {}
+  if (!lectura_id || !token || !texto) return new Response('Faltan datos', { status: 400 })
   let sb; try { sb = admin() } catch (e) { console.error(e.message); return new Response(e.message, { status: 500 }) }
   const terminar = async (campos) => { await sb.from('tc_lecturas').update({ ...campos, actualizado_en: new Date().toISOString() }).eq('id', lectura_id) }
   const { data: { user }, error } = await sb.auth.getUser(token); if (error || !user) return new Response('Sesión inválida', { status: 401 })
   const { data: lectura } = await sb.from('tc_lecturas').select('id,user_id,estado').eq('id', lectura_id).maybeSingle()
   if (!lectura || lectura.user_id !== user.id || lectura.estado !== 'pendiente') return new Response('Lectura no válida', { status: 400 })
   if (!env('ANTHROPIC_API_KEY')) { await terminar({ estado: 'error', error: 'El servidor no tiene configurada la llave ANTHROPIC_API_KEY.' }); return new Response('', { status: 202 }) }
-  const buffer = Buffer.from(base64, 'base64'); if (buffer.length > 5 * 1024 * 1024) { await terminar({ estado: 'error', error: 'El archivo supera 5 MB; reduce la foto o exporta el PDF.' }); return new Response('', { status: 202 }) }
-
-  const cliente = new Anthropic({ apiKey: env('ANTHROPIC_API_KEY') })
-  let contenido, modo
-  if (/pdf/i.test(tipo || '')) {
-    let texto = ''; try { texto = (await textoDePdf(buffer)).texto } catch (e) { texto = '' }
-    if (texto.replace(/\s+/g, '').length >= 400) { modo = 'texto'; contenido = [{ type: 'text', text: 'Extracto (texto extraído del PDF, identificadores tachados):\n\n' + tachar(texto, [user.email?.split('@')[0], ...nombres]) }] }
-    else { modo = 'pdf'; contenido = [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }, { type: 'text', text: 'Extrae los datos de este extracto. No devuelvas datos personales.' }] }
-  } else if (/^image\/(png|jpe?g|webp|gif)$/i.test(tipo || '')) {
-    modo = 'imagen'; contenido = [{ type: 'image', source: { type: 'base64', media_type: tipo.toLowerCase(), data: base64 } }, { type: 'text', text: 'Extrae los datos de este extracto. No devuelvas datos personales.' }]
-  } else { await terminar({ estado: 'error', error: 'Formato no soportado: sube un PDF o una foto (JPG/PNG).' }); return new Response('', { status: 202 }) }
-
+  const limpio = tachar(String(texto).slice(0, 120000), [user.email?.split('@')[0], ...nombres])
   try {
-    const r = await cliente.messages.create({ model: MODELO(), max_tokens: 8000, system: SISTEMA, messages: [{ role: 'user', content: contenido }] })
-    const texto = r.content.filter(c => c.type === 'text').map(c => c.text).join('\n')
-    const out = normalizar(extraerJson(texto))
-    out.modo = modo; out.modelo = MODELO(); out.uso = { entrada: r.usage?.input_tokens, salida: r.usage?.output_tokens }
+    const cliente = new Anthropic({ apiKey: env('ANTHROPIC_API_KEY') })
+    const r = await cliente.messages.create({ model: MODELO(), max_tokens: 8000, system: SISTEMA, messages: [{ role: 'user', content: [{ type: 'text', text: 'Extracto (texto extraído del PDF, identificadores tachados):\n\n' + limpio }] }] })
+    const salida = r.content.filter(c => c.type === 'text').map(c => c.text).join('\n')
+    const out = normalizar(extraerJson(salida))
+    out.modo = 'texto'; out.modelo = MODELO(); out.uso = { entrada: r.usage?.input_tokens, salida: r.usage?.output_tokens }
     await terminar({ estado: 'lista', resultado: out })
   } catch (e) {
     console.error('extracto-leer', e.status || '', e.message)
