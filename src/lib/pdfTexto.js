@@ -1,10 +1,13 @@
 // Extrae el texto de un PDF en el navegador (pdf.js) conservando la disposición por líneas, igual que
 // netlify/functions/_pdf.mjs. El PDF no sale del dispositivo: al servidor solo viaja el texto ya tachado.
-export async function textoDePdf(file, maxPaginas = 12) {
-  const pdfjs = await import('pdfjs-dist')
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
+export async function textoDePdf(file, maxPaginas = 12, password = undefined) {
+  // Build 'legacy' de pdf.js 4.x: funciona en Safari/iOS y navegadores de hace unos años (la 6.x exige APIs muy recientes).
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/legacy/build/pdf.worker.min.mjs', import.meta.url).toString()
   const data = new Uint8Array(await file.arrayBuffer())
-  const doc = await pdfjs.getDocument({ data, isEvalSupported: false }).promise
+  let doc
+  try { doc = await pdfjs.getDocument({ data, isEvalSupported: false, password }).promise }
+  catch (e) { if (e && e.name === 'PasswordException') { const err = new Error(password ? 'Contraseña incorrecta.' : 'Este PDF tiene contraseña.'); err.password = true; throw err } throw e }
   const paginas = []
   for (let p = 1; p <= Math.min(doc.numPages, maxPaginas); p++) {
     const page = await doc.getPage(p); const tc = await page.getTextContent()

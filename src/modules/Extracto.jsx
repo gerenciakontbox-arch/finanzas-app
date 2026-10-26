@@ -17,15 +17,18 @@ export default function ImportarExtracto({ tc, r, saldoApp, onClose }) {
   const { db, insertarVarios, actualizar, insertar, recargar } = useData(); const { miembroActual } = useAuth()
   const [fase, setFase] = useState('archivo'); const [err, setErr] = useState(''); const [busy, setBusy] = useState(null); const fileRef = useRef()
   const [lectura, setLectura] = useState(null); const [filas, setFilas] = useState([]); const [actualizarCupo, setActualizarCupo] = useState(true)
+  const [pedirClave, setPedirClave] = useState(null); const [clave, setClave] = useState('')   // PDF con contraseña: se pide aquí y nunca sale del dispositivo
   const catDefault = db.categorias.find(c => c.activa !== false)?.id || null
 
-  const leer = async file => {
+  const leer = async (file, password) => {
     setErr(''); setBusy('Leyendo el PDF en tu dispositivo…')
     let lecturaId = null
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!/pdf/i.test(file.type) && !/\.pdf$/i.test(file.name)) throw new Error('Por ahora solo se aceptan extractos en PDF (el archivo que envía el banco).')
-      let texto = ''; try { texto = (await textoDePdf(file)).texto } catch (e) { throw new Error('No se pudo abrir el PDF. Si está protegido con contraseña, ábrelo con ella y guárdalo sin protección.') }
+      let texto = ''
+      try { texto = (await textoDePdf(file, 12, password)).texto }
+      catch (e) { if (e.password) { setPedirClave({ file, error: password ? e.message : '' }); setBusy(null); return } throw new Error('No se pudo abrir el PDF (' + (e.message || e.name || 'error desconocido') + ').') }
       if (texto.replace(/\s+/g, '').length < 400) throw new Error('Este PDF es una imagen escaneada, sin texto. Pide al banco el extracto original en PDF.')
       const limpio = tachar(texto, [miembroActual?.nombre, session.user.email?.split('@')[0]])
       if (limpio.length > 200000) throw new Error('El extracto es demasiado largo para leerlo de una vez.')
@@ -80,6 +83,13 @@ export default function ImportarExtracto({ tc, r, saldoApp, onClose }) {
           <input ref={fileRef} type="file" accept=".pdf,application/pdf" style={{ display: 'none' }} onChange={e => { const f = e.target.files[0]; if (f) leer(f); e.target.value = '' }} />
         </div>
         {err && <Aviso tipo="err">{err}</Aviso>}
+        {pedirClave && <div style={{ background: T.superficie, borderRadius: 12, padding: '12px 14px' }}>
+          <div style={{ fontWeight: 700, fontSize: 13 }}>Este PDF tiene contraseña</div>
+          <div style={{ fontSize: 12, color: T.gris, marginTop: 4, lineHeight: 1.5 }}>Es la que te pide el banco al abrirlo (en muchos bancos, tu número de cédula). Se usa solo aquí, en tu dispositivo, para abrir el archivo; no se envía ni se guarda.</div>
+          <input type="password" inputMode="numeric" autoFocus value={clave} onChange={e => setClave(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && clave) { const f = pedirClave.file; setPedirClave(null); leer(f, clave) } }} placeholder="Contraseña del PDF" style={{ ...inp, background: '#fff', marginTop: 10 }} />
+          {pedirClave.error && <div style={{ fontSize: 12, color: T.rojo, fontWeight: 700, marginTop: 6 }}>{pedirClave.error}</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}><SmallBtn onClick={() => { setPedirClave(null); setClave('') }} bg="#fff" color={T.gris}>Cancelar</SmallBtn><SmallBtn onClick={() => { const f = pedirClave.file; setPedirClave(null); leer(f, clave) }} bg={T.morado} color="#fff">Abrir y leer</SmallBtn></div>
+        </div>}
       </div>}
       {fase === 'revisar' && lectura && <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ background: T.morado, color: '#fff', borderRadius: 16, padding: '14px 16px' }}>
