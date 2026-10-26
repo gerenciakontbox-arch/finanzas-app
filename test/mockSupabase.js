@@ -9,9 +9,9 @@ const CATS = [['Arriendo', 'Fijo'], ['Servicios públicos', 'Fijo'], ['Internet'
 const CATS_EMP = [['Arriendo', 'Fijo'], ['Nómina', 'Fijo'], ['Honorarios', 'Variable'], ['Software y suscripciones', 'Fijo'], ['Impuestos', 'Provisión'], ['Cuota crédito', 'Amortización crédito'], ['Pago tarjeta crédito', 'Amortización crédito'], ['Ventas', 'Variable'], ['Otro', 'Variable']]
 
 export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}) {
-  const T = {}; const tablas = ['app_meta', 'espacios', 'espacio_miembros', 'perfiles', 'categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'programado', 'programado_adjuntos', 'movimientos', 'bitacora', 'push_suscripciones', 'consentimientos', 'eventos', 'perfil_usuario', 'ofertas', 'senales_def', 'app_admins', 'accesos_operador', 'tc_extractos']
+  const T = {}; const tablas = ['app_meta', 'espacios', 'espacio_miembros', 'perfiles', 'categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'programado', 'programado_adjuntos', 'movimientos', 'bitacora', 'push_suscripciones', 'consentimientos', 'eventos', 'perfil_usuario', 'ofertas', 'senales_def', 'app_admins', 'accesos_operador', 'tc_extractos', 'tc_lecturas']
   tablas.forEach(t => T[t] = [])
-  T.app_meta.push({ clave: 'schema_version', valor: '9' }); T.app_meta.push({ clave: 'politica_version', valor: '2026-10-20' })
+  T.app_meta.push({ clave: 'schema_version', valor: '10' }); T.app_meta.push({ clave: 'politica_version', valor: '2026-10-20' })
   T.senales_def.push({ codigo: 'creditos_multiples', nombre: 'Varios créditos activos', descripcion: 'Tienes dos o más créditos activos.', servicio: 'Reestructuración y optimización de deuda', activa: true }, { codigo: 'activos_sin_cobertura', nombre: 'Activos sin seguro registrado', descripcion: 'Tienes vehículos o inmuebles sin un seguro programado.', servicio: 'Revisión de coberturas', activa: true })
   T.app_admins.push({ user_id: 'u-andres', nombre: 'Andrés (operador)' })
   let session = null; const listeners = []
@@ -44,7 +44,7 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
     if (t === 'app_meta') return true
     if (t === 'espacios') return mine.includes(r.id)
     if (t === 'perfiles') return r.user_id === me()
-    if (t === 'push_suscripciones' || t === 'consentimientos' || t === 'ofertas' || t === 'app_admins') return r.user_id === me()
+    if (t === 'push_suscripciones' || t === 'consentimientos' || t === 'ofertas' || t === 'app_admins' || t === 'tc_lecturas') return r.user_id === me()
     if (t === 'perfil_usuario') return r.user_id === me() && consiente(me(), 'perfil')
     if (t === 'senales_def') return true
     if (t === 'eventos' || t === 'accesos_operador') return false
@@ -91,6 +91,7 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
           if (t === 'cuentas' && T.cuentas.some(c => c.espacio_id === row.espacio_id && c.nombre === row.nombre)) throw new Error('duplicate key value violates unique constraint "cuentas_espacio_id_nombre_key"')
           if (t === 'movimientos' && row.ref_externa && T.movimientos.some(m => m.espacio_id === row.espacio_id && m.ref_externa === row.ref_externa)) throw new Error('duplicate key value violates unique constraint "movimientos_ref_externa_uq"')
           if (t === 'tc_cargos' && row.ref_extracto && T.tc_cargos.some(c => c.cuenta_id === row.cuenta_id && c.ref_extracto === row.ref_extracto)) throw new Error('duplicate key value violates unique constraint "tc_cargos_ref_extracto_uq"')
+          if (t === 'tc_lecturas') { row.estado ||= 'pendiente' }
           if (!(t === 'eventos' ? row.user_id === me() : visible(t, row))) throw new Error('new row violates row-level security policy for table "' + t + '"'); if (t === 'cuentas') setDueno(row); T[t].push(row)
           if (t === 'movimientos') sincronizarEspejos(row)
           return row

@@ -1,5 +1,5 @@
 // Prueba unitaria: normalización de lo que devuelve el modelo (caso Nu y caso Falabella) y conciliación con compras existentes.
-import { normalizar } from '../netlify/functions/extracto-leer.mjs'
+import { normalizar } from '../netlify/functions/extracto-leer-background.mjs'
 import { conciliar, huella } from '../src/lib/extracto.js'
 import { tachar } from '../netlify/functions/_pdf.mjs'
 const ok = (n, c) => { console.log(c ? 'PASS' : 'FAIL', n); if (!c) process.exitCode = 1 }

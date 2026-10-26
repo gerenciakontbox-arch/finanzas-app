@@ -10,6 +10,9 @@ import { conciliar, diferenciaSaldo } from '../lib/extracto'
 import { supabase } from '../lib/supabase'
 
 const leerBase64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(f) })
+// Las fotos se reducen en el teléfono (máx. 1800 px, JPEG) antes de enviarlas: pesan menos y el límite del servidor es 5 MB.
+const reducirImagen = f => new Promise((res, rej) => { const img = new Image(); const url = URL.createObjectURL(f); img.onload = () => { const k = Math.min(1, 1800 / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); res({ base64: c.toDataURL('image/jpeg', 0.85).split(',')[1], tipo: 'image/jpeg' }) }; img.onerror = rej; img.src = url })
+const esperar = ms => new Promise(r => setTimeout(r, ms))
 
 export default function ImportarExtracto({ tc, r, saldoApp, onClose }) {
   const { db, insertarVarios, actualizar, insertar, recargar } = useData(); const { miembroActual } = useAuth()
@@ -18,16 +21,31 @@ export default function ImportarExtracto({ tc, r, saldoApp, onClose }) {
   const catDefault = db.categorias.find(c => c.activa !== false)?.id || null
 
   const leer = async file => {
-    setErr(''); setBusy('Leyendo el extracto… (10–30 segundos)')
+    setErr(''); setBusy('Preparando el archivo…')
+    let lecturaId = null
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      const base64 = await leerBase64(file)
-      const res = await fetch('/.netlify/functions/extracto-leer', { method: 'POST', headers: { Authorization: 'Bearer ' + session.access_token, 'content-type': 'application/json' }, body: JSON.stringify({ base64, tipo: file.type, nombre: file.name, nombres: [miembroActual?.nombre] }) })
-      const out = await res.json().catch(() => ({ error: 'Respuesta inválida del servidor' })); if (!res.ok || out.error) throw new Error(out.error || ('Error ' + res.status))
+      const esImagen = /^image\//.test(file.type)
+      const { base64, tipo } = esImagen ? await reducirImagen(file) : { base64: await leerBase64(file), tipo: file.type || 'application/pdf' }
+      // 1) fila pendiente (solo la ve este usuario); 2) la función de fondo procesa y escribe el resultado; 3) se consulta hasta que esté lista
+      const { data: fila, error: e1 } = await supabase.from('tc_lecturas').insert({ user_id: session.user.id, cuenta_id: tc.id }).select().single(); if (e1) throw e1
+      lecturaId = fila.id
+      setBusy('Leyendo el extracto… (15–40 segundos)')
+      const res = await fetch('/.netlify/functions/extracto-leer-background', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lectura_id: fila.id, token: session.access_token, base64, tipo, nombres: [miembroActual?.nombre] }) })
+      if (!res.ok && res.status !== 202) throw new Error('El servidor no aceptó el archivo (' + res.status + ').')
+      let out = null
+      for (let i = 0; i < 90; i++) {
+        await esperar(2000)
+        const { data: l, error: e2 } = await supabase.from('tc_lecturas').select('estado,resultado,error').eq('id', fila.id).single(); if (e2) throw e2
+        if (l.estado === 'lista') { out = l.resultado; break }
+        if (l.estado === 'error') throw new Error(l.error || 'No se pudo leer el extracto')
+        if (i === 20) setBusy('Sigue leyendo… los extractos largos tardan hasta un minuto')
+      }
+      if (!out) throw new Error('El servidor tardó demasiado. Intenta de nuevo en un momento.')
       const pag = {}; db.cuotas_pagadas.forEach(x => { if (x.cargo_id) pag[x.cargo_id] = (pag[x.cargo_id] || 0) + 1 })
       const existentes = db.tc_cargos.filter(c => c.cuenta_id === tc.id)
       setLectura(out); setFilas(conciliar(out.compras, existentes, pag)); setFase('revisar')
-    } catch (e) { setErr(e.message) } finally { setBusy(null) }
+    } catch (e) { setErr(e.message) } finally { setBusy(null); if (lecturaId) supabase.from('tc_lecturas').delete().eq('id', lecturaId).then(() => {}, () => {}) }
   }
   const toggle = i => setFilas(f => f.map((x, k) => k === i ? { ...x, incluir: !x.incluir } : x))
   const nuevas = filas.filter(f => f.estado === 'nueva' && f.incluir), ajustes = filas.filter(f => f.estado === 'ajuste' && f.incluir)

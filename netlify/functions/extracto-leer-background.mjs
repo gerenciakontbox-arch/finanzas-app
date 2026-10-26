@@ -1,6 +1,7 @@
-// Lee un extracto de tarjeta de crédito (PDF o foto) y devuelve compras, otros cargos y el estado de la
-// tarjeta como datos. El archivo NO se guarda: se procesa en memoria y se descarta. Antes de enviar texto
-// al modelo se tachan identificadores (tarjeta, documento, correo, teléfono, dirección, nombre).
+// Lee un extracto de tarjeta de crédito (PDF o foto) EN SEGUNDO PLANO (sufijo -background: Netlify responde
+// 202 de inmediato y deja correr hasta 15 min) y escribe el resultado en tc_lecturas (compras, otros cargos y
+// estado de la tarjeta, sin datos personales). El archivo NO se guarda: se procesa en memoria y se descarta.
+// Antes de enviar texto al modelo se tachan identificadores (tarjeta, documento, correo, teléfono, dirección, nombre).
 // Variables en Netlify: ANTHROPIC_API_KEY (obligatoria), ANTHROPIC_MODEL (opcional, por defecto claude-sonnet-5-5).
 import Anthropic from '@anthropic-ai/sdk'
 import { admin, env } from './_push.mjs'
@@ -33,8 +34,6 @@ Reglas:
 - Si un dato no aparece, usa null. No inventes. No incluyas nombres de personas, números de documento, de tarjeta, direcciones, correos ni teléfonos en ningún campo.
 - "advertencias": lo que un contador debería revisar (ej. líneas ilegibles, totales que no cuadran, cuotas incoherentes).`
 
-const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json' } })
-
 function extraerJson(texto) {
   const m = texto.match(/\{[\s\S]*\}/); if (!m) throw new Error('El modelo no devolvió datos legibles')
   return JSON.parse(m[0])
@@ -58,13 +57,16 @@ export function normalizar(raw) {
 
 export default async (req) => {
   if (req.method !== 'POST') return new Response('Método no permitido', { status: 405 })
-  const token = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, ''); if (!token) return json({ error: 'Sin sesión' }, 401)
-  if (!env('ANTHROPIC_API_KEY')) return json({ error: 'El servidor no tiene configurada la llave ANTHROPIC_API_KEY.' }, 500)
-  let sb; try { sb = admin() } catch (e) { return json({ error: e.message }, 500) }
-  const { data: { user }, error } = await sb.auth.getUser(token); if (error || !user) return json({ error: 'Sesión inválida' }, 401)
-  let body; try { body = await req.json() } catch { return json({ error: 'Cuerpo inválido' }, 400) }
-  const { base64, tipo, nombres = [] } = body || {}; if (!base64) return json({ error: 'Falta el archivo' }, 400)
-  const buffer = Buffer.from(base64, 'base64'); if (buffer.length > 12 * 1024 * 1024) return json({ error: 'El archivo supera 12 MB' }, 413)
+  let body; try { body = await req.json() } catch { return new Response('Cuerpo inválido', { status: 400 }) }
+  const { lectura_id, token, base64, tipo, nombres = [] } = body || {}
+  if (!lectura_id || !token || !base64) return new Response('Faltan datos', { status: 400 })
+  let sb; try { sb = admin() } catch (e) { console.error(e.message); return new Response(e.message, { status: 500 }) }
+  const terminar = async (campos) => { await sb.from('tc_lecturas').update({ ...campos, actualizado_en: new Date().toISOString() }).eq('id', lectura_id) }
+  const { data: { user }, error } = await sb.auth.getUser(token); if (error || !user) return new Response('Sesión inválida', { status: 401 })
+  const { data: lectura } = await sb.from('tc_lecturas').select('id,user_id,estado').eq('id', lectura_id).maybeSingle()
+  if (!lectura || lectura.user_id !== user.id || lectura.estado !== 'pendiente') return new Response('Lectura no válida', { status: 400 })
+  if (!env('ANTHROPIC_API_KEY')) { await terminar({ estado: 'error', error: 'El servidor no tiene configurada la llave ANTHROPIC_API_KEY.' }); return new Response('', { status: 202 }) }
+  const buffer = Buffer.from(base64, 'base64'); if (buffer.length > 5 * 1024 * 1024) { await terminar({ estado: 'error', error: 'El archivo supera 5 MB; reduce la foto o exporta el PDF.' }); return new Response('', { status: 202 }) }
 
   const cliente = new Anthropic({ apiKey: env('ANTHROPIC_API_KEY') })
   let contenido, modo
@@ -74,16 +76,17 @@ export default async (req) => {
     else { modo = 'pdf'; contenido = [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }, { type: 'text', text: 'Extrae los datos de este extracto. No devuelvas datos personales.' }] }
   } else if (/^image\/(png|jpe?g|webp|gif)$/i.test(tipo || '')) {
     modo = 'imagen'; contenido = [{ type: 'image', source: { type: 'base64', media_type: tipo.toLowerCase(), data: base64 } }, { type: 'text', text: 'Extrae los datos de este extracto. No devuelvas datos personales.' }]
-  } else return json({ error: 'Formato no soportado: sube un PDF o una foto (JPG/PNG).' }, 400)
+  } else { await terminar({ estado: 'error', error: 'Formato no soportado: sube un PDF o una foto (JPG/PNG).' }); return new Response('', { status: 202 }) }
 
   try {
     const r = await cliente.messages.create({ model: MODELO(), max_tokens: 8000, system: SISTEMA, messages: [{ role: 'user', content: contenido }] })
     const texto = r.content.filter(c => c.type === 'text').map(c => c.text).join('\n')
     const out = normalizar(extraerJson(texto))
     out.modo = modo; out.modelo = MODELO(); out.uso = { entrada: r.usage?.input_tokens, salida: r.usage?.output_tokens }
-    return json(out)
+    await terminar({ estado: 'lista', resultado: out })
   } catch (e) {
     console.error('extracto-leer', e.status || '', e.message)
-    return json({ error: e.status === 401 ? 'La llave ANTHROPIC_API_KEY no es válida.' : e.status === 429 ? 'Límite de uso de la API alcanzado; intenta en un minuto.' : 'No se pudo leer el extracto: ' + e.message }, 502)
+    await terminar({ estado: 'error', error: e.status === 401 ? 'La llave ANTHROPIC_API_KEY no es válida.' : e.status === 429 ? 'Límite de uso de la API alcanzado; intenta en un minuto.' : 'No se pudo leer el extracto: ' + e.message })
   }
+  return new Response('', { status: 202 })
 }

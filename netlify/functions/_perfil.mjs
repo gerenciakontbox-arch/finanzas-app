@@ -105,5 +105,6 @@ export async function calcularTodos(sb) {
   let ok = 0, fallos = 0
   for (const uid of uids) { try { await calcularPara(sb, uid); ok++ } catch (e) { fallos++; console.error('perfil', uid, e.message) } }
   const { data: podados } = await sb.rpc('podar_eventos', { p_dias: 90 })
+  try { await sb.rpc('podar_lecturas') } catch { /* opcional */ }
   return { usuarios: uids.length, ok, fallos, eventos_podados: podados }
 }

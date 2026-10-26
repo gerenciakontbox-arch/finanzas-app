@@ -6,7 +6,7 @@ App de finanzas personales con **espacios** compartidos (hogar, empresa). React 
 
 ### 1. Supabase
 1. Crea una cuenta en https://supabase.com y un proyecto nuevo (región **East US (N. Virginia)**, la más cercana a Colombia). Guarda la contraseña de la base de datos aunque la app no la usa.
-2. En el panel: **SQL Editor → New query**. Pega el contenido completo de `supabase/migrations/0001_schema.sql` y ejecuta (**Run**); luego haz lo mismo, en orden, con `0002_espacios.sql`, `0003_creditos_plan.sql`, `0004_codigo_invitacion.sql`, `0005_push.sql`, `0006_perfil.sql`, `0007_import_movimientos.sql`, `0008_saldos_apertura.sql` y `0009_extractos_tc.sql`. Todos son idempotentes: puedes volver a ejecutarlos.
+2. En el panel: **SQL Editor → New query**. Pega el contenido completo de `supabase/migrations/0001_schema.sql` y ejecuta (**Run**); luego haz lo mismo, en orden, con `0002_espacios.sql`, `0003_creditos_plan.sql`, `0004_codigo_invitacion.sql`, `0005_push.sql`, `0006_perfil.sql`, `0007_import_movimientos.sql`, `0008_saldos_apertura.sql`, `0009_extractos_tc.sql` y `0010_lecturas_extracto.sql`. Todos son idempotentes: puedes volver a ejecutarlos.
 3. En **Authentication → URL Configuration**:
    - *Site URL*: la URL de tu sitio en Netlify (por ejemplo `https://finanzas-quijano.netlify.app`).
    - *Redirect URLs*: agrega esa misma URL y `http://localhost:5173` (para desarrollo).
@@ -53,7 +53,7 @@ psql -h /tmp -p 5499 -U postgres -f test/schema2.test.sql && psql -h /tmp -p 549
 ```
 
 ## Extracto de tarjeta por PDF o foto (migración 0009)
-Deudas → tarjeta → botón de documento. El archivo va a `netlify/functions/extracto-leer.mjs`, que extrae el texto del PDF (`_pdf.mjs`, con deduplicación de negritas y **tachado** de tarjeta, documento, nombre, dirección, correo y teléfono) y lo interpreta con el modelo de Anthropic (`ANTHROPIC_API_KEY` en Netlify; `ANTHROPIC_MODEL` opcional, por defecto `claude-sonnet-5-5`). Si el PDF no tiene texto o es una foto, se envía el documento/imagen tal cual. Nada se guarda: solo las compras y totales extraídos (`tc_extractos.lineas`, sin datos personales).
+Deudas → tarjeta → botón de documento. El archivo va a `netlify/functions/extracto-leer-background.mjs` (función **de fondo**: Netlify responde 202 y deja correr hasta 15 min; las funciones normales se cortan a los 10 s). La app crea una fila en `tc_lecturas`, la función escribe allí el resultado y la app lo consulta cada 2 s y borra la fila. Extrae el texto del PDF (`_pdf.mjs`, con deduplicación de negritas y **tachado** de tarjeta, documento, nombre, dirección, correo y teléfono) y lo interpreta con el modelo de Anthropic (`ANTHROPIC_API_KEY` en Netlify; `ANTHROPIC_MODEL` opcional, por defecto `claude-sonnet-5-5`). Si el PDF no tiene texto o es una foto, se envía el documento/imagen tal cual. Nada se guarda: solo las compras y totales extraídos (`tc_extractos.lineas`, sin datos personales).
 La app concilia (`src/lib/extracto.js`): compras nuevas se crean con `cuotas_previas = cuota_actual − 1` (sirve para la primera carga de una tarjeta ya usada), las existentes se reconocen por huella (`tc_cargos.ref_extracto`) o por fecha+monto+descripción, y las que tienen cuotas desfasadas se ofrecen como ajuste. El estado del corte (pago total, mínimo, límite, cupo) se guarda en `tc_extractos` y pre-llena los extras al pagar la factura. Probado con extractos reales de Nu y Banco Falabella (`test/extracto.test.mjs`). Costo aproximado: 1–5 centavos de USD por extracto.
 
 ## Saldos de apertura (migración 0008)

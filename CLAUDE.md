@@ -16,8 +16,8 @@ App de finanzas personales/hogar/empresa. React + Vite (PWA) · Supabase (Postgr
 - `src/lib/` `auth.jsx` (sesión, espacios, consentimientos, `SCHEMA_VERSION`), `data.jsx` (carga de tablas, `db` filtrado por espacio, `saldoCuenta`, `insertar/actualizar/borrar/rpc` con eventos), `finanzas.js` (amortización, depreciación, aportes), `util.js` (`amortizacion` con sistemas fija/capital, seguro, abonos), `ui.jsx` (primitivas y tokens), `push.js`, `eventos.js`, `csv.js`.
 - `src/modules/` una pantalla por archivo; `Privacidad.jsx` (autorizaciones, derechos, Mi perfil, ofertas, operador); `MoverA.jsx` (mover ítems entre espacios).
 - `src/legal/politica.js` política y finalidades.
-- `netlify/functions/` `avisos-diarios` (push 12:00 UTC), `aviso-prueba`, `perfil-diario` (06:00 UTC), `perfil-ahora`, `extracto-leer` (PDF/foto → JSON con Anthropic; `_pdf.mjs` extrae y tacha), `_push.mjs`, `_perfil.mjs` (indicadores y `SENALES`).
-- `supabase/migrations/` 0001 base → 0009. `supabase/email-magic-link.html` plantilla del código OTP (`{{ .Token }}`).
+- `netlify/functions/` `avisos-diarios` (push 12:00 UTC), `aviso-prueba`, `perfil-diario` (06:00 UTC), `perfil-ahora`, `extracto-leer-background` (PDF/foto → JSON con Anthropic, en segundo plano vía `tc_lecturas`; `_pdf.mjs` extrae y tacha), `_push.mjs`, `_perfil.mjs` (indicadores y `SENALES`).
+- `supabase/migrations/` 0001 base → 0010. `supabase/email-magic-link.html` plantilla del código OTP (`{{ .Token }}`).
 - `test/` `run-sql.sh`, `schema*.test.sql`, `mockSupabase.js`, `e2e.mjs`, `perfil.test.mjs`, capturas `shot-*.png`.
 
 ## Comandos

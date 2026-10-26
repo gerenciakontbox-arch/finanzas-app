@@ -8,6 +8,7 @@ set client_min_messages = warning;
 \i supabase/migrations/0007_import_movimientos.sql
 \i supabase/migrations/0008_saldos_apertura.sql
 \i supabase/migrations/0009_extractos_tc.sql
+\i supabase/migrations/0010_lecturas_extracto.sql
 grant all on all tables in schema public to authenticated;
 
 \set a '11111111-1111-1111-1111-111111111111'
@@ -92,4 +93,13 @@ select banco, pago_total from tc_extractos where cuenta_id=:'tcid';
 insert into tc_cargos(espacio_id, cuenta_id, fecha, descripcion, monto, cuotas, cuotas_previas, primera_cuota, ref_extracto) values (:'pa', :'tcid', '2026-04-23', 'Claude.Ai Subscription', 71377.6, 24, 5, '2026-05-12', '2026-04-23|71378|claudeaisubscription');
 \echo '--- misma huella en la misma tarjeta debe fallar'
 insert into tc_cargos(espacio_id, cuenta_id, fecha, descripcion, monto, cuotas, primera_cuota, ref_extracto) values (:'pa', :'tcid', '2026-04-23', 'Claude.Ai Subscription', 71377.6, 24, '2026-05-12', '2026-04-23|71378|claudeaisubscription');
-select valor as schema_version_9 from app_meta where clave='schema_version';
+\echo '=== Lecturas en segundo plano: solo el dueño ve su fila; no puede marcarla lista (lo hace el servidor)'
+set role authenticated; set request.jwt.claim.sub = :'a';
+insert into tc_lecturas(user_id, cuenta_id) values (:'a', :'tcid') returning id as lid \gset
+set request.jwt.claim.sub = :'e';
+select count(*) as esposa_ve_0 from tc_lecturas;
+set request.jwt.claim.sub = :'a';
+\echo '--- el usuario no puede marcar su lectura como lista'
+update tc_lecturas set estado = 'lista' where id = :'lid';
+reset role;
+select valor as schema_version_10 from app_meta where clave='schema_version';
