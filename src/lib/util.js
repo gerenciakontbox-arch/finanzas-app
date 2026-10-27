@@ -11,11 +11,17 @@ export const cfFija = (cap, tm, n) => { const r = (tm || 0) / 100; if (!n) retur
 // seguro: valor fijo mensual que se suma a cada cuota (no amortiza). pagadas: {n: {capital, interes, seguro}} de cuotas ya pagadas
 // (se respetan tal cual). abonos: [{monto, modo: 'plazo'|'cuota', despues_de_cuota}] → recalculan el saldo pendiente:
 // 'plazo' mantiene la cuota y acorta el plazo; 'cuota' mantiene el plazo y baja la cuota.
-export const amortizacion = ({ capital, tasa, n, fechaInicio, sistema = 'fija', seguro = 0, pagadas = {}, abonos = [] }) => {
+// ajustes: [{saldo_real, despues_de_cuota}] → el saldo pasa a ser el del extracto del banco (remedición) y se
+// amortiza en las cuotas que faltan (el número de cuotas restantes no cambia; la cuota sí).
+export const amortizacion = ({ capital, tasa, n, fechaInicio, sistema = 'fija', seguro = 0, pagadas = {}, abonos = [], ajustes = [] }) => {
   const r = (tasa || 0) / 100; const seg = +seguro || 0
   let s = +capital; let i = 0; let cf = sistema === 'fija' ? cfFija(s, tasa, n) : null; let capFijo = sistema === 'capital' ? s / n : null
   let restantes = n; const out = []; const ab = [...abonos].sort((a, b) => a.despues_de_cuota - b.despues_de_cuota)
-  const aplicar = k => { for (const a of ab.filter(x => +x.despues_de_cuota === k)) { s = Math.max(0, s - +a.monto); if (a.modo === 'cuota') { if (sistema === 'fija') cf = cfFija(s, tasa, restantes); else capFijo = s / restantes } } }
+  const remedir = () => { if (sistema === 'fija') cf = cfFija(s, tasa, restantes); else capFijo = s / restantes }
+  const aplicar = k => {
+    for (const a of ab.filter(x => +x.despues_de_cuota === k)) { s = Math.max(0, s - +a.monto); if (a.modo === 'cuota') remedir() }
+    for (const a of ajustes.filter(x => +x.despues_de_cuota === k)) { s = Math.max(0, +a.saldo_real); if (restantes > 0) remedir() }
+  }
   aplicar(0)
   while (s > 0.5 && i < n * 3) {
     i++
@@ -23,9 +29,9 @@ export const amortizacion = ({ capital, tasa, n, fechaInicio, sistema = 'fija', 
     let cap = sistema === 'fija' ? cf - interes : capFijo
     const p = pagadas[i]
     if (p && p.capital != null) { cap = +p.capital }
-    if (cap > s || (sistema === 'capital' && restantes === 1)) cap = s           // última cuota ajusta
+    if (cap > s || (restantes === 1 && (sistema === 'capital' || Math.abs(cap - s) <= 2))) cap = s   // última cuota ajusta (y absorbe residuos de redondeo)
     const int = p && p.interes != null ? +p.interes : interes
-    s = Math.max(0, s - cap); restantes--
+    cap = Math.round(cap); s = Math.max(0, s - cap); restantes--   // el saldo avanza con el capital redondeado: la suma de capitales cuadra exacto con el saldo
     out.push({ n: i, fecha: addMonths(fechaInicio, i - 1), capital: Math.round(cap), interes: Math.round(int), seguro: Math.round(p && p.seguro != null ? +p.seguro : seg), total: Math.round(cap + int + (p && p.seguro != null ? +p.seguro : seg)), saldo: Math.round(s) })
     aplicar(i)
     if (restantes <= 0 && s > 0.5) { restantes = 1 } // modo 'plazo' nunca deja saldo colgado: una cuota más

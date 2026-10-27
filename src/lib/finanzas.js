@@ -1,5 +1,5 @@
 // Cálculos derivados sobre las tablas del hogar. Puros: reciben db, devuelven datos.
-import { amortizacion, cfFija, addMonths, TC } from './util'
+import { amortizacion, cfFija, addMonths, TC } from './util.js'
 
 // Mapa de cuotas pagadas: { deuda: {deudaId: {n: fila}}, cargo: {cargoId: {n: fila}} }
 export function indicePagadas(cuotas_pagadas) {
@@ -12,14 +12,18 @@ export function indicePagadas(cuotas_pagadas) {
 }
 
 const conPrevias = (pag, n) => { const out = { ...pag }; for (let i = 1; i <= (n || 0); i++) if (!out[i]) out[i] = { previa: true, numero: i, fecha_pago: null, monto_pagado: null }; return out }
-export function resumenDeuda(d, idx, abonos = []) {
+export function resumenDeuda(d, idx, abonos = [], ajustes = []) {
   const pag = conPrevias(idx.deuda[d.id] || {}, d.cuotas_previas)
-  const am = amortizacion({ capital: +d.capital_inicial, tasa: +d.tasa_mensual, n: d.total_cuotas, fechaInicio: d.fecha_primera_cuota, sistema: d.sistema || 'fija', seguro: +d.seguro_mensual || 0, pagadas: pag, abonos: abonos.filter(a => a.deuda_id === d.id) })
+  const misAbonos = abonos.filter(a => a.deuda_id === d.id), misAjustes = ajustes.filter(a => a.deuda_id === d.id)
+  const am = amortizacion({ capital: +d.capital_inicial, tasa: +d.tasa_mensual, n: d.total_cuotas, fechaInicio: d.fecha_primera_cuota, sistema: d.sistema || 'fija', seguro: +d.seguro_mensual || 0, pagadas: pag, abonos: misAbonos, ajustes: misAjustes })
   const rows = am.map(c => ({ ...c, pago: pag[c.n] || null }))
   const pendientes = rows.filter(c => !c.pago)
-  const capitalPagado = rows.filter(c => c.pago).reduce((a, c) => a + c.capital, 0) + abonos.filter(a => a.deuda_id === d.id).reduce((a, x) => a + +x.monto, 0)
+  const capitalPagado = rows.filter(c => c.pago).reduce((a, c) => a + c.capital, 0) + misAbonos.reduce((a, x) => a + +x.monto, 0)
   const capitalPendiente = pendientes.reduce((a, c) => a + c.capital, 0)
-  return { ...d, am: rows, cuotasTotales: rows.length, pagadas: rows.length - pendientes.length, capitalPagado, capitalPendiente, pct: Math.round(capitalPagado / +d.capital_inicial * 100), proxima: pendientes[0] || null, cf: pendientes[0] ? pendientes[0].total : 0, abonos: abonos.filter(a => a.deuda_id === d.id) }
+  const ultimoAjuste = misAjustes.slice().sort((a, b) => b.despues_de_cuota - a.despues_de_cuota || (b.fecha || '').localeCompare(a.fecha || ''))[0] || null
+  // % amortizado sobre lo que realmente hay que pagar (capital inicial, o saldo real + lo ya pagado si hubo ajuste)
+  const base = ultimoAjuste ? capitalPagado + capitalPendiente : +d.capital_inicial
+  return { ...d, am: rows, cuotasTotales: rows.length, pagadas: rows.length - pendientes.length, capitalPagado, capitalPendiente, pct: base > 0 ? Math.round(capitalPagado / base * 100) : 0, proxima: pendientes[0] || null, cf: pendientes[0] ? pendientes[0].total : 0, abonos: misAbonos, ajustes: misAjustes, ultimoAjuste }
 }
 
 // Depreciación lineal mensual con valor residual. Devuelve null si el activo no deprecia.
@@ -52,7 +56,7 @@ export function resumenTarjeta(cuenta, tc_cargos, idx) {
 
 export function deudaTotal(db) {
   const idx = indicePagadas(db.cuotas_pagadas)
-  const cred = db.deudas.filter(d => d.estado === 'Activo').reduce((a, d) => a + resumenDeuda(d, idx, db.abonos_capital || []).capitalPendiente, 0)
+  const cred = db.deudas.filter(d => d.estado === 'Activo').reduce((a, d) => a + resumenDeuda(d, idx, db.abonos_capital || [], db.ajustes_saldo_deuda || []).capitalPendiente, 0)
   const tcs = db.cuentas.filter(c => c.tipo === TC).reduce((a, c) => a + resumenTarjeta(c, db.tc_cargos, idx).saldo, 0)
   return { cred, tcs, total: cred + tcs }
 }
@@ -99,4 +103,40 @@ export function aportesPlanificados(all, periodo, userId, personalId) {
     out[p.espacio_id] = (out[p.espacio_id] || 0) + +p.monto
   }
   return out
+}
+
+// ── Deuda vs costo financiero ───────────────────────────────────────────────
+// Lee el desglose de los pagos de crédito y de tarjeta: el capital baja la deuda (no es gasto); interés, seguros,
+// mora, manejo y otros son el costo financiero real. Devuelve totales y el gasto del mes sin capital.
+export function costoFinanciero(movimientos) {
+  const t = { capital: 0, interes: 0, seguro: 0, mora: 0, manejo: 0, otros: 0, parcial: 0 }
+  let n = 0
+  for (const m of movimientos) {
+    if (m.tipo !== 'Salida' || m.espejo_de || !(m.deuda_id || m.tc_cuenta_id)) continue
+    const d = m.desglose || {}; const x = m.tc_cuenta_id ? (d.extras || {}) : d
+    n++
+    t.capital += +d.capital || 0; t.interes += +d.interes || 0
+    t.seguro += (+d.seguro || 0) + (+x.seguros || 0); t.mora += +x.mora || 0; t.manejo += +x.cuota_manejo || 0; t.otros += +x.otros || 0
+    t.parcial += +x.parcial || 0
+  }
+  const costo = t.interes + t.seguro + t.mora + t.manejo + t.otros
+  return { ...t, costo, pagos: n, total: t.capital + costo + t.parcial }
+}
+// Gastos por categoría para informes: los pagos de deuda se parten en 'Costo financiero' (sin el capital).
+export function gastosPorCategoria(movimientos, cat) {
+  const out = {}
+  for (const m of movimientos) {
+    if (m.tipo !== 'Salida') continue
+    const d = m.desglose || {}
+    if ((m.deuda_id || m.tc_cuenta_id) && d.capital != null) { const c = Math.max(0, +m.monto - (+d.capital || 0)); if (c > 0) out['Costo financiero'] = (out['Costo financiero'] || 0) + c; continue }
+    const nombre = cat[m.categoria_id]?.nombre || 'Sin categoría'; out[nombre] = (out[nombre] || 0) + +m.monto
+  }
+  return out
+}
+// Salidas del mes por etiqueta (un movimiento con varias etiquetas cuenta completo en cada una: no hay reparto).
+export function porEtiqueta(movimientos, etiquetas) {
+  const out = {}
+  for (const e of etiquetas) out[e.id] = { etiqueta: e, salidas: 0, ingresos: 0, n: 0 }
+  for (const m of movimientos) for (const id of m.etiqueta_ids || []) { const o = out[id]; if (!o) continue; o.n++; if (m.tipo === 'Salida') o.salidas += +m.monto; else if (m.tipo === 'Ingreso') o.ingresos += +m.monto }
+  return Object.values(out).filter(o => o.n > 0).sort((a, b) => b.salidas - a.salidas)
 }

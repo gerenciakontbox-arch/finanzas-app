@@ -4,6 +4,7 @@ import { Kpi, Card, Badge, Icon, IcoText, Modal, Field, inp, sel, PBtn, SaveBtn,
 import { fmtCOP, fmtDate, today, addDays, addMonths, primeroDelMes, ESTADOS_P, GRUPOS, PERIODICIDADES } from '../lib/util'
 import { presupuestoConEjecucion, aportesPlanificados, aportesPorEspacio } from '../lib/finanzas'
 import { useAuth } from '../lib/auth'
+import { EtiquetaPicker, ChipsDe } from './Etiquetas'
 import { parseCSV, parseMonto, parseFecha, matchOpt, toCSV, descargar, leerArchivoTexto, norm } from '../lib/csv'
 
 const ECLS = { Planificado: '#F3F1F8|#6E6E73', Programado: '#E6F2F6|#0F6E8C', Pagado: '#E7F5EE|#0F6B47', Cancelado: '#FBEAE7|#B42318' }
@@ -18,7 +19,7 @@ export default function Presupuesto({ goTo }) {
   const [periodo, setPeriodo] = useState(primeroDelMes())
   const [vista, setVista] = useState('todos'); const [modal, setModal] = useState(null); const [programar, setProgramar] = useState(null); const [fp, sfp, setFp] = useForm({ periodicidad: 'Mensual', vencimiento: '' }); const [search, setSearch] = useState(''); const [importar, setImportar] = useState(false); const [copiar, setCopiar] = useState(false)
   const cuentasCaja = db.cuentas.filter(c => c.tipo !== 'Tarjeta crédito')
-  const empty = { concepto: '', pagador_id: esPersonal ? null : userId, categoria_id: db.categorias.find(c => c.activa !== false)?.id || null, activo_id: null, cuenta_id: cuentasCaja[0]?.id || null, monto: '', fecha_tentativa: today(), estado: 'Planificado', notas: '' }
+  const empty = { concepto: '', pagador_id: esPersonal ? null : userId, categoria_id: db.categorias.find(c => c.activa !== false)?.id || null, activo_id: null, cuenta_id: cuentasCaja[0]?.id || null, monto: '', fecha_tentativa: today(), estado: 'Planificado', notas: '', etiqueta_ids: [] }
   const [form, sf, setForm] = useForm(empty)
   const pce = presupuestoConEjecucion(db, periodo)
   const periodosExistentes = [...new Set(db.presupuesto.map(p => p.periodo))].sort().reverse()
@@ -27,7 +28,7 @@ export default function Presupuesto({ goTo }) {
   const save = async () => {
     if (!form.concepto || !form.monto) return
     const row = { ...form, monto: parseMonto(form.monto), periodo, activo_id: form.activo_id || null, cuenta_id: form.cuenta_id || null, pagador_id: esPersonal ? null : (form.pagador_id || null), categoria_id: form.categoria_id || null }
-    delete row.id; delete row.ejecutado; delete row.diferencia; delete row.pct; delete row.creado_por; delete row.creado_en; delete row.actualizado_por; delete row.actualizado_en; delete row.espacio_id; delete row.entidad_id
+    delete row.id; delete row.ejecutado; delete row.diferencia; delete row.pct; delete row.creado_por; delete row.creado_en; delete row.actualizado_por; delete row.actualizado_en; delete row.espacio_id; delete row.entidad_id; delete row.programado_id; delete row.programado_serie_id; delete row.auto_creado; delete row.fecha_efectiva; delete row.periodicidad; row.etiqueta_ids = form.etiqueta_ids || []
     modal === 'add' ? await insertar('presupuesto', row) : await actualizar('presupuesto', modal.id, row)
     setModal(null)
   }
@@ -85,7 +86,7 @@ export default function Presupuesto({ goTo }) {
           <div key={p.id} data-item={p.concepto} style={{ background: '#fff', borderRadius: 14, padding: '14px 16px', border: '1px solid #EBE9F1' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
               <div style={{ flex: 1, paddingRight: 8, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, color: '#1B1B1F', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.concepto}</div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#1B1B1F', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.concepto}</div><ChipsDe ids={p.etiqueta_ids} />
                 <div style={{ fontSize: 11, color: '#6E6E73', marginTop: 2, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>{!esPersonal && <span><Icon name="user" size={10} style={{ marginRight: 3 }} />{p.pagador_id ? nombreMiembro(p.pagador_id) : 'sin pagador'} ·</span>} {cat?.nombre || '—'} {cat && <Badge val={cat.grupo} map={GCLS} />} · {fmtDate(p.fecha_tentativa)}</div>
                 {prog && <div style={{ fontSize: 11, color: T.morado, fontWeight: 700, marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="calendar" size={11} />Programado {p.periodicidad ? p.periodicidad.toLowerCase() : ''}{oc ? ` · vence ${fmtDate(oc.vencimiento)}` : ''} · se paga desde Programado</div>}
               </div>
@@ -120,6 +121,7 @@ export default function Presupuesto({ goTo }) {
           <Field label="Fecha tentativa"><input type="date" value={form.fecha_tentativa || ''} onChange={e => sf('fecha_tentativa', e.target.value)} style={inp} /></Field>
           <Field label="Estado"><select value={form.estado || ''} onChange={e => sf('estado', e.target.value)} style={sel}>{ESTADOS_P.filter(x => x !== 'Programado').map(x => <option key={x}>{x}</option>)}</select></Field>
           <Field label="Notas" full><input value={form.notas || ''} onChange={e => sf('notas', e.target.value)} style={inp} /></Field>
+          <EtiquetaPicker value={form.etiqueta_ids || []} onChange={v => sf('etiqueta_ids', v)} />
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={() => setModal(null)} /><SaveBtn onClick={save}>Guardar</SaveBtn></div>
       </Modal>}

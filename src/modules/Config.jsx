@@ -6,6 +6,7 @@ import { fmtCOP, fmtDate, today, TIPOS_CTA, TC, GRUPOS } from '../lib/util'
 import { toCSV, descargar } from '../lib/csv'
 import { TIPO_ICON, TIPO_LABEL } from '../App'
 import { Privacidad } from './Privacidad'
+import Etiquetas from './Etiquetas'
 import { soportado, configurado, permiso, esIOS, esStandalone, activar, desactivar, suscripcionActual, enviarPrueba } from '../lib/push'
 
 export default function Config({ goTo }) {
@@ -16,11 +17,12 @@ export default function Config({ goTo }) {
         <PBtn active={sec === 'espacios'} onClick={() => setSec('espacios')}><IcoText name="home" size={13}>Espacios</IcoText></PBtn>
         <PBtn active={sec === 'cuentas'} onClick={() => setSec('cuentas')}><IcoText name="landmark" size={13}>Cuentas</IcoText></PBtn>
         <PBtn active={sec === 'categorias'} onClick={() => setSec('categorias')}><IcoText name="tag" size={13}>Categorías</IcoText></PBtn>
+        <PBtn active={sec === 'etiquetas'} onClick={() => setSec('etiquetas')}><IcoText name="tag" size={13}>Etiquetas</IcoText></PBtn>
         <PBtn active={sec === 'avisos'} onClick={() => setSec('avisos')}><IcoText name="alert" size={13}>Avisos</IcoText></PBtn>
         <PBtn active={sec === 'datos'} onClick={() => setSec('datos')}><IcoText name="file" size={13}>Datos</IcoText></PBtn>
         <PBtn active={sec === 'privacidad'} onClick={() => setSec('privacidad')}><IcoText name="shield" size={13}>Privacidad</IcoText></PBtn>
       </div>
-      {sec === 'espacios' && <Espacios />}{sec === 'cuentas' && <Cuentas />}{sec === 'categorias' && <Categorias />}{sec === 'avisos' && <Avisos />}{sec === 'datos' && <Datos />}{sec === 'privacidad' && <Privacidad goTo={goTo} />}
+      {sec === 'espacios' && <Espacios />}{sec === 'cuentas' && <Cuentas />}{sec === 'categorias' && <Categorias />}{sec === 'etiquetas' && <Etiquetas />}{sec === 'avisos' && <Avisos />}{sec === 'datos' && <Datos />}{sec === 'privacidad' && <Privacidad goTo={goTo} />}
     </div>
   )
 }

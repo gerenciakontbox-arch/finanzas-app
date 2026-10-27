@@ -8,6 +8,8 @@ import { fmtCOP, fmtDate, today, daysLeft, cfFija, TC, TIPOS_DEUDA } from '../li
 import { indicePagadas, resumenDeuda, resumenTarjeta } from '../lib/finanzas'
 import { parseMonto } from '../lib/csv'
 
+export const CONCEPTOS_DIF = [['mora', 'Intereses de mora'], ['seguros', 'Seguros (variación)'], ['cuota_manejo', 'Cuota de manejo / comisión'], ['otros', 'Otro concepto']]
+
 // R12 · pago anticipado: si faltan más de DIAS_ANTICIPO días para el vencimiento, se exige un motivo.
 export const DIAS_ANTICIPO = 5
 export const MOTIVOS_ANTICIPO = ['Adelanto de cuota', 'Corrección de fecha', 'Pago doble por viaje o ausencia', 'Otro']
@@ -30,19 +32,86 @@ export function MotivoAnticipo({ cuota, onConfirm, onClose }) {
   )
 }
 
+// Pago de cuota con valor real: muestra la cuota calculada, pide cuánto se pagó y, si no coincide, obliga a explicar la
+// diferencia por concepto (mora, seguros, manejo, otros con detalle) o a dar un motivo si se pagó menos (pago parcial).
+// Sale UN movimiento de caja por el valor real; cada concepto queda en el desglose para los informes.
+export function PagoCuota({ r, c, onClose, onConfirm }) {
+  const { nombreCuenta } = useData(); const ix = useIndices()
+  const [pagado, setPagado] = useState(String(c.total)); const [dif, setDif] = useState({ mora: '', seguros: '', cuota_manejo: '', otros: '' }); const [detalle, setDetalle] = useState(''); const [motivo, setMotivo] = useState('')
+  const [anticipo, setAnticipo] = useState(false)
+  const esperado = c.total; const real = parseMonto(pagado) || 0; const diferencia = real - esperado
+  const suma = Object.values(dif).reduce((a, v) => a + (parseMonto(v) || 0), 0)
+  const falta = diferencia > 0 ? diferencia - suma : 0
+  const ant = esAnticipado(c.fecha)
+  const listo = real > 0 && (diferencia === 0 || (diferencia > 0 && falta === 0 && (!(parseMonto(dif.otros) > 0) || detalle.trim())) || (diferencia < 0 && motivo.trim()))
+  const confirmar = (motivoAnt = null) => {
+    if (ant && !motivoAnt) { setAnticipo(true); return }
+    const extras = {}; if (diferencia > 0) { for (const [k] of CONCEPTOS_DIF) { const v = parseMonto(dif[k]) || 0; if (v > 0) extras[k] = v } if (extras.otros) extras.otros_detalle = detalle.trim() }
+    if (diferencia < 0) extras.parcial = diferencia
+    onConfirm({ extras, motivo: [motivoAnt, diferencia < 0 ? motivo.trim() : null].filter(Boolean).join(' · ') || null })
+  }
+  const fila = (l, v, b) => <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, borderBottom: b ? `2px solid ${T.morado}` : 'none' }}><span style={{ color: T.gris }}>{l}</span><b>{fmtCOP(v)}</b></div>
+  return (
+    <Modal title={`Pagar cuota ${c.n} · ${r.nombre}`} onClose={onClose}>
+      <div style={{ background: T.superficie, borderRadius: 12, padding: '10px 14px' }}>
+        {fila('Capital', c.capital)}{fila('Interés', c.interes, !c.seguro)}{c.seguro > 0 && fila('Seguro del crédito', c.seguro, true)}
+        <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8, fontSize: 13 }}><span style={{ fontWeight: 800 }}>Cuota calculada</span><span style={{ fontWeight: 800, color: T.morado }}>{fmtCOP(esperado)}</span></div>
+        <div style={{ fontSize: 11, color: T.gris, marginTop: 4 }}>Vence {fmtDate(c.fecha)} · sale de {ix.cta[r.cuenta_pago_id] ? nombreCuenta(ix.cta[r.cuenta_pago_id]) : 'la cuenta de pago'}</div>
+      </div>
+      <div style={{ marginTop: 14 }}><Field label="¿Cuánto pagaste realmente? (COP)"><input type="number" inputMode="numeric" autoFocus value={pagado} onChange={e => setPagado(e.target.value)} style={{ ...inp, fontWeight: 800, fontSize: 18 }} aria-label="Valor pagado" /></Field></div>
+      {real > 0 && diferencia > 0 && <div style={{ marginTop: 12 }}>
+        <Aviso tipo="warn">Pagaste <b>{fmtCOP(diferencia)}</b> más que la cuota. Reparte esa diferencia en los conceptos que cobró el banco; cada uno queda registrado en el movimiento.</Aviso>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+          {CONCEPTOS_DIF.map(([k, l]) => <Field key={k} label={l}><input type="number" inputMode="numeric" value={dif[k]} onChange={e => setDif({ ...dif, [k]: e.target.value })} placeholder="0" style={inp} /></Field>)}
+          {parseMonto(dif.otros) > 0 && <Field label="¿Qué es ese otro concepto?" full><input value={detalle} onChange={e => setDetalle(e.target.value)} placeholder="Ej. Comisión por pago en corresponsal" style={inp} /></Field>}
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 700, marginTop: 8, color: falta === 0 ? T.verde : T.rojo }}>{falta === 0 ? 'La diferencia queda explicada.' : falta > 0 ? `Falta explicar ${fmtCOP(falta)}` : `Repartiste ${fmtCOP(-falta)} de más`}</div>
+      </div>}
+      {real > 0 && diferencia < 0 && <div style={{ marginTop: 12 }}>
+        <Aviso tipo="warn">Pagaste <b>{fmtCOP(-diferencia)}</b> menos que la cuota: queda como <b>pago parcial</b>. La cuota se marca pagada por lo que salió de caja; el saldo del crédito no baja lo esperado, así que conviene ajustar el saldo con el próximo extracto.</Aviso>
+        <div style={{ marginTop: 10 }}><Field label="Motivo del pago parcial"><input value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Ej. Acuerdo con el banco, resto el día 20" style={inp} /></Field></div>
+      </div>}
+      {ant && <div style={{ marginTop: 10 }}><Aviso tipo="info">Faltan {daysLeft(c.fecha)} días para el vencimiento: al confirmar se te pedirá el motivo del anticipo.</Aviso></div>}
+      <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={onClose} /><SaveBtn disabled={!listo} onClick={() => confirmar()}>Registrar pago {real > 0 ? fmtCOP(real) : ''}</SaveBtn></div>
+      {anticipo && <MotivoAnticipo cuota={c} onClose={() => setAnticipo(false)} onConfirm={m => { setAnticipo(false); confirmar(m) }} />}
+    </Modal>
+  )
+}
+
+// Saldo real según el extracto del banco: no toca caja; la tabla se remide desde la cuota siguiente manteniendo
+// las cuotas restantes. Sirve al crear el crédito (saldo de apertura) y después (cada extracto).
+export function AjustarSaldo({ r, onClose, onConfirm }) {
+  const [saldo, setSaldo] = useState(''); const [fecha, setFecha] = useState(today()); const [motivo, setMotivo] = useState('Saldo según extracto del banco')
+  const real = parseMonto(saldo); const dif = real != null && saldo !== '' ? real - r.capitalPendiente : null
+  const restantes = r.cuotasTotales - r.pagadas
+  return (
+    <Modal title={`Ajustar saldo · ${r.nombre}`} onClose={onClose}>
+      <Aviso tipo="info">La app calcula un saldo de capital de <b>{fmtCOP(r.capitalPendiente)}</b> tras {r.pagadas} cuota{r.pagadas === 1 ? '' : 's'}. Si el extracto dice otra cosa (gastos capitalizados, seguros, intereses de mora), escribe el saldo real: las <b>{restantes} cuotas restantes</b> se recalculan desde ahí. No se crea ningún movimiento de caja.</Aviso>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
+        <Field label="Saldo real según extracto (COP)" full><input type="number" inputMode="numeric" autoFocus value={saldo} onChange={e => setSaldo(e.target.value)} style={{ ...inp, fontWeight: 800, fontSize: 18 }} aria-label="Saldo real" /></Field>
+        <Field label="Fecha del extracto"><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={inp} /></Field>
+        <Field label="Motivo"><input value={motivo} onChange={e => setMotivo(e.target.value)} style={inp} /></Field>
+      </div>
+      {dif != null && <div style={{ fontSize: 12, fontWeight: 700, marginTop: 10, color: dif === 0 ? T.verde : dif > 0 ? T.rojo : T.verde }}>{dif === 0 ? 'Coincide con lo calculado.' : dif > 0 ? `El banco dice ${fmtCOP(dif)} más que la app: la cuota subirá.` : `El banco dice ${fmtCOP(-dif)} menos que la app: la cuota bajará.`}</div>}
+      <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={onClose} /><SaveBtn disabled={!(real >= 0 && saldo !== '' && motivo.trim())} onClick={() => onConfirm({ saldo_real: real, fecha, motivo: motivo.trim(), saldo_calculado: r.capitalPendiente })}>Ajustar saldo</SaveBtn></div>
+    </Modal>
+  )
+}
+
 export default function Deudas({ goTo }) {
   const { db, all, insertar, actualizar, borrar, rpc, nombreCuenta, duenoCuenta, nombreMiembro } = useData(); const ix = useIndices(); const { esPersonal, userId, espacio } = useAuth()
   const [mover, setMover] = useState(null)
   const [open, setOpen] = useState(null); const [modal, setModal] = useState(null); const [showAll, setShowAll] = useState({})
-  const [anticipo, setAnticipo] = useState(null)   // { r, c } cuota que requiere motivo
+  const [pago, setPago] = useState(null)           // { r, c } cuota en proceso de pago (valor real)
+  const [ajuste, setAjuste] = useState(null)       // crédito al que se le ajusta el saldo según extracto
   const [abono, setAbono] = useState(null)         // crédito al que se abona
   const cuentasCaja = db.cuentas.filter(c => c.tipo !== TC)
-  const emptyD = { nombre: '', tipo: 'Consumo', sistema: 'fija', activo_id: null, cuenta_pago_id: cuentasCaja[0]?.id || null, capital_inicial: '', tasa_mensual: '', total_cuotas: '', seguro_mensual: '', cuotas_previas: '', fecha_primera_cuota: today(), estado: 'Activo', notas: '' }
+  const emptyD = { nombre: '', tipo: 'Consumo', sistema: 'fija', activo_id: null, cuenta_pago_id: cuentasCaja[0]?.id || null, capital_inicial: '', tasa_mensual: '', total_cuotas: '', seguro_mensual: '', cuotas_previas: '', fecha_primera_cuota: today(), estado: 'Activo', notas: '', saldo_real: '', fecha_saldo: today() }
   const [form, sf, setForm] = useForm(emptyD)
   const [fa, sfa, setFa] = useForm({ fecha: today(), monto: '', cuenta_id: '', modo: 'plazo', motivo: '' })
   const idx = indicePagadas(db.cuotas_pagadas)
   const tarjetas = db.cuentas.filter(c => c.tipo === TC).map(c => resumenTarjeta(c, db.tc_cargos, idx))
-  const creditos = db.deudas.map(d => resumenDeuda(d, idx, db.abonos_capital))
+  const creditos = db.deudas.map(d => resumenDeuda(d, idx, db.abonos_capital, db.ajustes_saldo_deuda))
   const totalCred = creditos.filter(d => d.estado === 'Activo').reduce((a, d) => a + d.capitalPendiente, 0)
   const totalTC = tarjetas.reduce((a, r) => a + r.saldo, 0)
   const cargaMes = creditos.filter(d => d.estado === 'Activo').reduce((a, d) => a + d.cf, 0) + tarjetas.reduce((a, r) => a + r.proximaFactura, 0)
@@ -53,13 +122,21 @@ export default function Deudas({ goTo }) {
   const saveD = async () => {
     if (!form.nombre || !form.capital_inicial || !form.total_cuotas) return
     const row = { nombre: form.nombre, notas: form.notas, tipo: form.tipo, sistema: form.sistema || 'fija', activo_id: form.activo_id || null, cuenta_pago_id: form.cuenta_pago_id || null, capital_inicial: parseMonto(form.capital_inicial), tasa_mensual: parseFloat(form.tasa_mensual) || 0, total_cuotas: parseInt(form.total_cuotas), seguro_mensual: parseMonto(form.seguro_mensual) || 0, cuotas_previas: Math.max(0, Math.min(parseInt(form.cuotas_previas) || 0, (parseInt(form.total_cuotas) || 1) - 1)), fecha_primera_cuota: form.fecha_primera_cuota, estado: form.estado }
-    try { modal === 'add' ? await insertar('deudas', row) : await actualizar('deudas', modal.id, row); setModal(null) } catch (e) { alert(e.message) }
+    try {
+      if (modal === 'add') {
+        const d = await insertar('deudas', row)
+        const sr = parseMonto(form.saldo_real)
+        if (form.saldo_real !== '' && sr != null && sr >= 0) {   // saldo de apertura según extracto: la tabla arranca desde el saldo real
+          const calc = resumenDeuda({ ...d, ...row }, idx, [], []).capitalPendiente
+          await rpc('ajustar_saldo_deuda', { p_deuda: d.id, p_fecha: form.fecha_saldo || today(), p_saldo_real: sr, p_saldo_calculado: calc, p_motivo: 'Saldo según extracto al crear el crédito' })
+        }
+      } else await actualizar('deudas', modal.id, row)
+      setModal(null)
+    } catch (e) { alert(e.message) }
   }
-  const ejecutarPago = async (d, c, motivo = null) => { try { await rpc('pagar_cuota_credito', { p_deuda: d.id, p_numero: c.n, p_fecha: today(), p_cuenta: d.cuenta_pago_id, p_capital: c.capital, p_interes: c.interes, p_extras: {}, p_motivo: motivo, p_seguro: c.seguro || 0 }) } catch (e) { alert(e.message) } }
-  const pagarC = (d, c) => {
-    if (esAnticipado(c.fecha)) { setAnticipo({ r: d, c }); return }
-    if (window.confirm(`¿Registrar el pago de la cuota ${c.n} por ${fmtCOP(c.total)} desde ${ix.cta[d.cuenta_pago_id] ? nombreCuenta(ix.cta[d.cuenta_pago_id]) : 'la cuenta de pago'}?`)) ejecutarPago(d, c)
-  }
+  const ejecutarPago = async (d, c, { extras = {}, motivo = null } = {}) => { try { await rpc('pagar_cuota_credito', { p_deuda: d.id, p_numero: c.n, p_fecha: today(), p_cuenta: d.cuenta_pago_id, p_capital: c.capital, p_interes: c.interes, p_extras: extras, p_motivo: motivo, p_seguro: c.seguro || 0 }); setPago(null) } catch (e) { alert(e.message) } }
+  const pagarC = (d, c) => setPago({ r: d, c })
+  const ajustar = async ({ saldo_real, fecha, motivo, saldo_calculado }) => { try { await rpc('ajustar_saldo_deuda', { p_deuda: ajuste.id, p_fecha: fecha, p_saldo_real: saldo_real, p_saldo_calculado: saldo_calculado, p_motivo: motivo }); setAjuste(null) } catch (e) { alert(e.message) } }
   const anularC = async c => { if (!window.confirm('¿Anular el pago de esta cuota? Se eliminará también el movimiento de caja.')) return; if (c.pago.movimiento_id) await borrar('movimientos', c.pago.movimiento_id); await borrar('cuotas_pagadas', c.pago.id) }
   const abonar = async () => {
     const monto = parseMonto(fa.monto) || 0; if (monto <= 0) return
@@ -78,7 +155,7 @@ export default function Deudas({ goTo }) {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}><h2 style={{ margin: 0, fontWeight: 800, fontSize: 16, color: T.tinta }}>Créditos <span style={{ color: T.gris, fontWeight: 700, fontSize: 13 }}>{creditos.length}</span></h2><PrimaryBtn onClick={() => { setForm(emptyD); setModal('add') }} style={{ height: 36, fontSize: 13 }}><Icon name="plus" size={13} />Nuevo</PrimaryBtn></div>
       {creditos.map(r => { const isOpen = open === r.id; const vT = showAll[r.id]; const rows = vT ? r.am : r.am.slice(Math.max(0, r.pagadas - 1), r.pagadas + 4); const anticipada = r.proxima && esAnticipado(r.proxima.fecha); return (
-        <div key={r.id} style={{ background: T.superficie, borderRadius: 16, overflow: 'hidden' }}>
+        <div key={r.id} data-item={r.nombre} style={{ background: T.superficie, borderRadius: 16, overflow: 'hidden' }}>
           <div onClick={() => setOpen(isOpen ? null : r.id)} style={{ padding: '14px 16px', cursor: 'pointer', background: r.estado === 'Activo' ? T.tinta : T.gris, color: '#fff' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
               <div style={{ minWidth: 0 }}>
@@ -93,15 +170,17 @@ export default function Deudas({ goTo }) {
               <div><div style={{ fontSize: 11, opacity: 0.75 }}>Próxima cuota</div><div style={{ fontWeight: 800, fontSize: 14, color: '#FFD166' }}>{r.proxima ? fmtCOP(r.proxima.total) : '—'}</div>{r.proxima && <div style={{ fontSize: 11, opacity: 0.8 }}>{r.proxima.fecha < today() ? 'Vencida · ' : ''}{fmtDate(r.proxima.fecha)} · N° {r.proxima.n}</div>}</div>
               <div><div style={{ fontSize: 11, opacity: 0.75 }}>{r.sistema === 'capital' ? 'Abono a capital' : 'Cuota'}</div><div style={{ fontWeight: 800, fontSize: 14 }}>{fmtCOP(r.sistema === 'capital' ? (r.proxima?.capital || 0) : r.cf)}</div><div style={{ fontSize: 11, opacity: 0.8 }}>{ix.cta[r.cuenta_pago_id] ? nombreCuenta(ix.cta[r.cuenta_pago_id]) : 'sin cuenta'}</div></div>
             </div>
-            <div style={{ marginTop: 10 }}><div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 99, height: 6 }}><div style={{ height: 6, borderRadius: 99, background: '#fff', width: `${Math.min(100, r.pct)}%` }} /></div><div style={{ fontSize: 11, opacity: 0.8, marginTop: 3 }}>{r.pct}% amortizado · {r.pagadas}/{r.cuotasTotales} cuotas pagadas{r.abonos.length ? ` · ${r.abonos.length} abono${r.abonos.length > 1 ? 's' : ''} ${fmtCOP(r.abonos.reduce((a, x) => a + +x.monto, 0))}` : ''}</div></div>
+            <div style={{ marginTop: 10 }}><div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 99, height: 6 }}><div style={{ height: 6, borderRadius: 99, background: '#fff', width: `${Math.min(100, r.pct)}%` }} /></div><div style={{ fontSize: 11, opacity: 0.8, marginTop: 3 }}>{r.pct}% amortizado · {r.pagadas}/{r.cuotasTotales} cuotas pagadas{r.abonos.length ? ` · ${r.abonos.length} abono${r.abonos.length > 1 ? 's' : ''} ${fmtCOP(r.abonos.reduce((a, x) => a + +x.monto, 0))}` : ''}{r.ultimoAjuste ? ` · saldo según extracto ${fmtDate(r.ultimoAjuste.fecha)}` : ''}</div></div>
           </div>
           {r.estado === 'Activo' && r.proxima && !isOpen && <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, padding: '10px 12px' }}><SmallBtn onClick={() => setOpen(r.id)} bg="#fff" color={T.tinta}>Ver tabla</SmallBtn><SmallBtn onClick={() => pagarC(r, r.proxima)} bg={anticipada ? '#fff' : T.morado} color={anticipada ? T.ambar : '#fff'}><Icon name={anticipada ? 'clock' : 'check'} size={12} />{anticipada ? `Cuota ${r.proxima.n} · vence ${fmtDate(r.proxima.fecha)}` : `Pagar cuota ${r.proxima.n}`}</SmallBtn></div>}
           {isOpen && <div style={{ borderTop: `1px solid ${T.divisor}` }}>
             <div style={{ padding: '10px 12px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}><div style={{ fontWeight: 700, fontSize: 12, color: T.tinta }}>Tabla de amortización</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {r.estado === 'Activo' && <SmallBtn onClick={() => { setFa({ fecha: today(), monto: '', cuenta_id: r.cuenta_pago_id || '', modo: 'plazo', motivo: '' }); setAbono(r) }} bg={T.morado} color="#fff"><Icon name="banknote" size={12} />Abonar a capital</SmallBtn>}
+                {r.estado === 'Activo' && r.proxima && <SmallBtn onClick={() => setAjuste(r)} bg="#fff" color={T.morado} title="Ajustar saldo según extracto"><Icon name="refresh" size={12} />Ajustar saldo</SmallBtn>}
                 <SmallBtn onClick={() => setShowAll(p => ({ ...p, [r.id]: !vT }))} bg="#fff" color={T.gris}>{vT ? 'Menos' : 'Todas'}</SmallBtn><SmallBtn onClick={() => setMover({ tabla: 'deudas', id: r.id, nombre: r.nombre })} bg="#fff" color={T.gris}><Icon name="arrow-right" size={12} />Mover</SmallBtn><SmallBtn onClick={() => { setForm({ ...r, capital_inicial: String(r.capital_inicial), tasa_mensual: String(r.tasa_mensual), total_cuotas: String(r.total_cuotas), seguro_mensual: String(r.seguro_mensual || ''), cuotas_previas: String(r.cuotas_previas || '') }); setModal(r) }} bg="#fff" color={T.morado}><Icon name="pencil" size={13} /></SmallBtn><SmallBtn onClick={async () => { if (window.confirm('¿Eliminar este crédito y su historial de cuotas?')) await borrar('deudas', r.id) }} bg="#fff" color={T.rojo}><Icon name="trash" size={13} /></SmallBtn></div></div>
             {r.abonos.length > 0 && <div style={{ padding: '4px 12px 6px', fontSize: 11, color: T.gris }}>{r.abonos.map(a => <div key={a.id}>Abono a capital {fmtCOP(a.monto)} el {fmtDate(a.fecha)} · {a.modo === 'plazo' ? 'misma cuota, menos plazo' : 'mismo plazo, cuota menor'}{a.motivo ? ` · ${a.motivo}` : ''}</div>)}</div>}
+            {r.ajustes.length > 0 && <div style={{ padding: '4px 12px 6px', fontSize: 11, color: T.ambar }}>{r.ajustes.slice().sort((a, b) => a.despues_de_cuota - b.despues_de_cuota).map(a => <div key={a.id}>Saldo ajustado a {fmtCOP(a.saldo_real)} tras la cuota {a.despues_de_cuota} ({fmtDate(a.fecha)}) · {+a.diferencia >= 0 ? '+' : '−'}{fmtCOP(Math.abs(a.diferencia))} frente a lo calculado · {a.motivo}</div>)}</div>}
             <div style={{ overflowX: 'auto', padding: '0 8px 12px' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 420 }}>
               <thead><tr style={{ background: T.divisor }}>{['N°', 'Fecha', 'Capital', 'Interés', +r.seguro_mensual > 0 ? 'Seguro' : null, 'Cuota', 'Pagado', 'Estado', ''].filter(h => h !== null).map(h => <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: T.gris }}>{h}</th>)}</tr></thead>
               <tbody>{rows.map(c => { const venc = !c.pago && c.fecha < today(); const pr = c.pago?.monto_pagado; const dif = pr != null ? +pr - c.total : null; const ant = !c.pago && esAnticipado(c.fecha); return (
@@ -130,13 +209,16 @@ export default function Deudas({ goTo }) {
           <Field label="Seguros mensuales (COP)"><input type="number" inputMode="numeric" value={form.seguro_mensual || ''} onChange={e => sf('seguro_mensual', e.target.value)} style={inp} placeholder="Vida + todo riesgo" /></Field>
           <Field label="Primera cuota"><input type="date" value={form.fecha_primera_cuota} onChange={e => sf('fecha_primera_cuota', e.target.value)} style={inp} /></Field>
           <Field label="Cuotas ya pagadas antes de la app"><input type="number" inputMode="numeric" value={form.cuotas_previas || ''} onChange={e => sf('cuotas_previas', e.target.value)} placeholder="0" style={inp} /></Field>
+          {modal === 'add' && <Field label="Saldo real hoy según extracto (opcional)"><input type="number" inputMode="numeric" value={form.saldo_real} onChange={e => sf('saldo_real', e.target.value)} placeholder="Si difiere del calculado" style={inp} /></Field>}
+          {modal === 'add' && <Field label="Fecha de ese saldo"><input type="date" value={form.fecha_saldo} onChange={e => sf('fecha_saldo', e.target.value)} style={inp} /></Field>}
           <Field label="Cuenta de pago"><select value={form.cuenta_pago_id || ''} onChange={e => sf('cuenta_pago_id', e.target.value || null)} style={sel}>{cuentasCaja.map(x => <option key={x.id} value={x.id}>{nombreCuenta(x)}</option>)}</select></Field>
           <Field label="Activo asociado"><select value={form.activo_id || ''} onChange={e => sf('activo_id', e.target.value || null)} style={sel}><option value="">— Ninguno —</option>{db.activos.map(x => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select></Field>
           <Field label="Estado"><select value={form.estado} onChange={e => sf('estado', e.target.value)} style={sel}><option>Activo</option><option>Cancelado</option></select></Field>
           <Field label="Notas" full><input value={form.notas || ''} onChange={e => sf('notas', e.target.value)} style={inp} /></Field>
         </div>
         {cfEst > 0 && <div style={{ background: T.superficie, borderRadius: 12, padding: '10px 14px', marginTop: 12, display: 'flex', gap: 20 }}><div><div style={{ fontSize: 11, color: T.gris, fontWeight: 600 }}>{form.sistema === 'capital' ? 'Primera cuota est.' : 'Cuota est.'}{segF ? ' (con seguro)' : ''}</div><div style={{ fontWeight: 800, fontSize: 15, color: T.morado }}>{fmtCOP(cfEst)}</div></div><div><div style={{ fontSize: 11, color: T.gris, fontWeight: 600 }}>Total a pagar est.</div><div style={{ fontWeight: 800, fontSize: 15, color: T.rojo }}>{fmtCOP(totalEst)}</div></div></div>}
-        {modal !== 'add' && modal.pagadas > 0 && <div style={{ marginTop: 10 }}><Aviso tipo="info">Las {modal.pagadas} cuotas ya pagadas no cambian; la tabla se recalcula solo hacia adelante.</Aviso></div>}
+        {modal !== 'add' && modal.pagadas > 0 && <div style={{ marginTop: 10 }}><Aviso tipo="info">Las {modal.pagadas} cuotas ya pagadas no cambian; la tabla se recalcula solo hacia adelante. El saldo real se ajusta con el botón "Ajustar saldo" en la tabla.</Aviso></div>}
+        {modal === 'add' && form.saldo_real !== '' && <div style={{ marginTop: 10 }}><Aviso tipo="info">Las cuotas restantes se calcularán desde el saldo real que indiques, no desde el capital inicial menos las cuotas previas.</Aviso></div>}
         <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={() => setModal(null)} /><SaveBtn onClick={saveD}>Guardar</SaveBtn></div>
       </Modal>}
 
@@ -156,7 +238,8 @@ export default function Deudas({ goTo }) {
         <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={() => setAbono(null)} /><SaveBtn onClick={abonar} disabled={!(parseMonto(fa.monto) > 0)}>Registrar abono</SaveBtn></div>
       </Modal>}
 
-      {anticipo && <MotivoAnticipo cuota={anticipo.c} onClose={() => setAnticipo(null)} onConfirm={async m => { const { r, c } = anticipo; setAnticipo(null); await ejecutarPago(r, c, m) }} />}
+      {pago && <PagoCuota r={pago.r} c={pago.c} onClose={() => setPago(null)} onConfirm={o => ejecutarPago(pago.r, pago.c, o)} />}
+      {ajuste && <AjustarSaldo r={ajuste} onClose={() => setAjuste(null)} onConfirm={ajustar} />}
       {mover && <MoverA item={mover} onClose={() => setMover(null)} />}
     </div>
   )

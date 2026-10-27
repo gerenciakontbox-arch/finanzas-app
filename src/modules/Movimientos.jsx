@@ -6,22 +6,23 @@ import { fmtCOP, fmtDate, today, TC } from '../lib/util'
 import { indicePagadas, resumenDeuda } from '../lib/finanzas'
 import { parseMonto, parseCSV, parseFecha, matchOpt, toCSV, descargar, leerArchivoTexto, norm } from '../lib/csv'
 import { esAnticipado, MotivoAnticipo } from './Deudas'
+import { EtiquetaPicker, ChipsDe, Chip } from './Etiquetas'
 
 const SUB = { aporte: ['Aporte a', '#4B1D9E', '#F3F1F8'], recibido: ['Recibido de', '#138A5B', '#E7F5EE'], devolucion: ['Devolución de', '#138A5B', '#E7F5EE'], traslado: ['Traslado', '#0F6E8C', '#E6F2F6'] }
 
 export default function Movimientos({ goTo, inicial }) {
-  const { db, insertar, borrar, rpc, espacioDe, nombreCuenta, duenoCuenta, nombreMiembro, cuentasDe } = useData(); const ix = useIndices()
+  const { db, insertar, actualizar, borrar, rpc, espacioDe, nombreCuenta, duenoCuenta, nombreMiembro, cuentasDe } = useData(); const ix = useIndices()
   const { espacio, esPersonal, userId, miembros, compartidos } = useAuth()
-  const [modal, setModal] = useState(false); const [filtro, setFiltro] = useState('todos'); const [mes, setMes] = useState(today().slice(0, 7)); const [anticipo, setAnticipo] = useState(false); const [importar, setImportar] = useState(false)
+  const [modal, setModal] = useState(false); const [filtro, setFiltro] = useState('todos'); const [mes, setMes] = useState(today().slice(0, 7)); const [anticipo, setAnticipo] = useState(false); const [importar, setImportar] = useState(false); const [etiqueta, setEtiqueta] = useState(null); const [etiquetar, setEtiquetar] = useState(null)   // filtro por etiqueta · movimiento al que se le cambian etiquetas
   const cuentasCaja = db.cuentas.filter(c => c.tipo !== TC)
-  const empty = { fecha: today(), tipo: 'Salida', descripcion: '', categoria_id: db.categorias.find(c => c.activa !== false)?.id || null, cuenta_id: cuentasCaja[0]?.id || null, cuenta_destino_id: '', modo_destino: espacio.tipo === 'empresa' ? 'ingreso' : 'devolucion', activo_id: null, presupuesto_id: null, monto: '', deuda_id: '', cuotaN: '', manejo: '', mora: '', seguros: '', otros: '', aMiembro: false }
+  const empty = { fecha: today(), tipo: 'Salida', descripcion: '', categoria_id: db.categorias.find(c => c.activa !== false)?.id || null, cuenta_id: cuentasCaja[0]?.id || null, cuenta_destino_id: '', modo_destino: espacio.tipo === 'empresa' ? 'ingreso' : 'devolucion', activo_id: null, presupuesto_id: null, monto: '', deuda_id: '', cuotaN: '', manejo: '', mora: '', seguros: '', otros: '', otrosDetalle: '', aMiembro: false, etiqueta_ids: [] }
   const [form, sf, setForm] = useForm(empty)
-  useEffect(() => { if (!inicial) return; if (inicial.filtro) setFiltro(inicial.filtro); if (inicial.nuevo) { setForm(empty); setModal(true) } }, [inicial?._k]) // eslint-disable-line
+  useEffect(() => { if (!inicial) return; if (inicial.filtro) setFiltro(inicial.filtro); if (inicial.etiqueta) setEtiqueta(inicial.etiqueta); if (inicial.nuevo) { setForm(empty); setModal(true) } }, [inicial?._k]) // eslint-disable-line
   const catSel = ix.cat[form.categoria_id]
   const isCreditPay = form.tipo === 'Salida' && catSel?.nombre === 'Cuota crédito'
   const idx = indicePagadas(db.cuotas_pagadas)
   const creditos = db.deudas.filter(d => d.estado === 'Activo')
-  const credSel = creditos.find(d => d.id === form.deuda_id); const rCred = credSel ? resumenDeuda(credSel, idx, db.abonos_capital) : null
+  const credSel = creditos.find(d => d.id === form.deuda_id); const rCred = credSel ? resumenDeuda(credSel, idx, db.abonos_capital, db.ajustes_saldo_deuda) : null
   const cuotaSel = rCred?.am.find(c => c.n === +form.cuotaN) || null
   const xM = parseMonto(form.manejo) || 0, xMo = parseMonto(form.mora) || 0, xS = parseMonto(form.seguros) || 0, xO = parseMonto(form.otros) || 0
   const totalCred = cuotaSel ? cuotaSel.total + xM + xMo + xS + xO : 0
@@ -29,16 +30,16 @@ export default function Movimientos({ goTo, inicial }) {
   const esTraslado = form.tipo === 'Transferencia'
   // cuentas personales de OTROS miembros habilitadas aquí (para "pagar a un miembro")
   const cuentasMiembros = cuentasCaja.filter(c => { const d = duenoCuenta(c); return d && d !== null })
-  const canSave = form.descripcion && (isCreditPay ? !!cuotaSel : montoNum > 0) && (!esTraslado || (form.cuenta_destino_id && form.cuenta_destino_id !== form.cuenta_id)) && (!form.aMiembro || form.cuenta_destino_id)
+  const canSave = form.descripcion && (isCreditPay ? !!cuotaSel && !(xO > 0 && !form.otrosDetalle.trim()) : montoNum > 0) && (!esTraslado || (form.cuenta_destino_id && form.cuenta_destino_id !== form.cuenta_id)) && (!form.aMiembro || form.cuenta_destino_id)
 
   const save = async (motivo = null) => {
     if (!canSave) return
     if (isCreditPay && !motivo && esAnticipado(cuotaSel.fecha)) { setAnticipo(true); return }
     try {
       if (isCreditPay) {
-        await rpc('pagar_cuota_credito', { p_deuda: credSel.id, p_numero: cuotaSel.n, p_fecha: form.fecha, p_cuenta: form.cuenta_id || null, p_capital: cuotaSel.capital, p_interes: cuotaSel.interes, p_extras: { cuota_manejo: xM, mora: xMo, seguros: xS, otros: xO }, p_motivo: motivo, p_seguro: cuotaSel.seguro || 0 })
+        await rpc('pagar_cuota_credito', { p_deuda: credSel.id, p_numero: cuotaSel.n, p_fecha: form.fecha, p_cuenta: form.cuenta_id || null, p_capital: cuotaSel.capital, p_interes: cuotaSel.interes, p_extras: { cuota_manejo: xM, mora: xMo, seguros: xS, otros: xO, otros_detalle: xO > 0 ? form.otrosDetalle.trim() : undefined }, p_motivo: motivo, p_seguro: cuotaSel.seguro || 0 })
       } else {
-        const row = { fecha: form.fecha, tipo: form.tipo, descripcion: form.descripcion, categoria_id: esTraslado ? null : (form.categoria_id || null), cuenta_id: form.cuenta_id || null, activo_id: form.activo_id || null, presupuesto_id: form.presupuesto_id || null, origen: 'manual', monto: montoNum }
+        const row = { fecha: form.fecha, tipo: form.tipo, descripcion: form.descripcion, categoria_id: esTraslado ? null : (form.categoria_id || null), cuenta_id: form.cuenta_id || null, activo_id: form.activo_id || null, presupuesto_id: form.presupuesto_id || null, origen: 'manual', monto: montoNum, etiqueta_ids: form.etiqueta_ids || [] }
         if (esTraslado) { row.subtipo = 'traslado'; row.cuenta_destino_id = form.cuenta_destino_id }
         if (form.tipo === 'Salida' && form.aMiembro && form.cuenta_destino_id) { row.cuenta_destino_id = form.cuenta_destino_id; row.modo_destino = form.modo_destino }
         await insertar('movimientos', row)
@@ -51,6 +52,7 @@ export default function Movimientos({ goTo, inicial }) {
   let items = db.movimientos.filter(m => m.fecha.startsWith(mes)).sort((a, b) => b.fecha.localeCompare(a.fecha) || (b.creado_en || '').localeCompare(a.creado_en || ''))
   if (filtro === 'Aportes') items = items.filter(m => m.tipo === 'Transferencia' && m.subtipo !== 'traslado')
   else if (filtro !== 'todos') items = items.filter(m => m.tipo === filtro)
+  if (etiqueta) items = items.filter(m => (m.etiqueta_ids || []).includes(etiqueta))
   const base = db.movimientos.filter(m => m.fecha.startsWith(mes))
   const ing = base.filter(m => m.tipo === 'Ingreso').reduce((a, m) => a + +m.monto, 0), sal = base.filter(m => m.tipo === 'Salida').reduce((a, m) => a + +m.monto, 0)
   const aportes = base.filter(m => m.tipo === 'Transferencia' && m.subtipo === 'aporte').reduce((a, m) => a + +m.monto, 0)
@@ -71,6 +73,7 @@ export default function Movimientos({ goTo, inicial }) {
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}><PBtn active={filtro === 'todos'} onClick={() => setFiltro('todos')}>Todos</PBtn><PBtn active={filtro === 'Ingreso'} onClick={() => setFiltro('Ingreso')}>Ingresos</PBtn><PBtn active={filtro === 'Salida'} onClick={() => setFiltro('Salida')}>Salidas</PBtn>{esPersonal && <PBtn active={filtro === 'Aportes'} onClick={() => setFiltro('Aportes')}>Aportes</PBtn>}</div>
         <div style={{ display: 'flex', gap: 8 }}><button onClick={() => setImportar(true)} title="Importar CSV" style={{ background: '#fff', color: T.morado, border: `1.5px solid ${T.divisor}`, borderRadius: 20, width: 40, height: 40, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="upload" size={18} /></button><PrimaryBtn onClick={() => { setForm(empty); setModal(true) }}><Icon name="plus" size={18} sw={2.2} /></PrimaryBtn></div>
       </div>
+      {db.etiquetas.length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}><span style={{ fontSize: 11, color: T.gris, fontWeight: 600 }}>etiqueta</span>{db.etiquetas.map(e => <Chip key={e.id} e={e} activa={etiqueta === e.id} onClick={() => setEtiqueta(etiqueta === e.id ? null : e.id)} />)}{etiqueta && <span style={{ fontSize: 11, color: T.gris }}>· {items.filter(m => m.tipo === 'Salida').length} salidas · {fmtCOP(items.filter(m => m.tipo === 'Salida').reduce((a, m) => a + +m.monto, 0))}</span>}</div>}
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {items.length === 0 && <div style={{ color: '#6E6E73', fontSize: 13, padding: '20px 0' }}>Sin movimientos.</div>}
         {items.map(m => { const rubro = ix.pre[m.presupuesto_id]; const esp = m.espejo_de ? espacioDe(m.espacio_contraparte) : null; const sub = SUB[m.subtipo]; const d = m.desglose || {}; const extras = (d.cuota_manejo || 0) + (d.mora || 0) + (d.seguros || 0) + (d.otros || 0); const pag = m.pagador_id && !esPersonal ? nombreMiembro(m.pagador_id) : null; const cta = ix.cta[m.cuenta_id]; const positivo = m.tipo === 'Ingreso' || (m.tipo === 'Transferencia' && (m.subtipo === 'recibido' || m.subtipo === 'devolucion')); return (
@@ -86,11 +89,12 @@ export default function Movimientos({ goTo, inicial }) {
                 {m.deuda_id && <div style={{ fontSize: 10, color: '#138A5B', marginTop: 3 }}><Icon name="check" size={11} style={{ marginRight: 4 }} />{ix.deu[m.deuda_id]?.nombre} · cuota {d.cuota} · capital {fmtCOP(d.capital)} · interés {fmtCOP(d.interes)}{extras > 0 && <span style={{ color: '#9A5B00' }}> · extras {fmtCOP(extras)}</span>}</div>}
                 {m.programado_id && !m.deuda_id && <div style={{ fontSize: 10, color: '#0F6E8C', marginTop: 3 }}><Icon name="calendar" size={11} style={{ marginRight: 4 }} />Desde programado</div>}
                 {m.motivo && <div style={{ fontSize: 10, color: '#9A5B00', marginTop: 3 }}><Icon name="alert" size={11} style={{ marginRight: 4 }} />{m.motivo}</div>}
+                <ChipsDe ids={m.etiqueta_ids} />
                 <div style={{ fontSize: 11, color: '#9A9AA0', marginTop: 3 }}>{pag ? `Pagó ${pag} · ` : ''}Registró {nombreMiembro(m.creado_por)}</div>
               </div>
               <div style={{ textAlign: 'right', flexShrink: 0 }}><div style={{ fontWeight: 800, fontSize: 15, color: positivo ? '#138A5B' : '#1B1B1F', fontVariantNumeric: 'tabular-nums' }}>{positivo ? '+ ' : m.subtipo === 'traslado' ? '' : '− '}{fmtCOP(m.monto).replace('$ ', '')}</div><div style={{ color: m.tipo === 'Transferencia' ? '#4B1D9E' : '#6E6E73', fontSize: 11, fontWeight: 700, marginTop: 2 }}>{m.tipo === 'Transferencia' ? (m.subtipo === 'traslado' ? 'Traslado' : m.subtipo === 'aporte' ? 'Aporte' : 'Recibido') : m.tipo}</div></div>
             </div>
-            {!m.espejo_de && <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}><button onClick={() => del(m)} style={{ background: 'none', border: 'none', color: '#B42318', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="trash" size={12} />Eliminar</button></div>}
+            {!m.espejo_de && <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 14, marginTop: 6 }}><button onClick={() => setEtiquetar(m)} aria-label={`Etiquetar ${m.descripcion}`} style={{ background: 'none', border: 'none', color: T.morado, fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="tag" size={12} />Etiquetar</button><button onClick={() => del(m)} style={{ background: 'none', border: 'none', color: '#B42318', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="trash" size={12} />Eliminar</button></div>}
           </div>) })}
       </div>
 
@@ -126,9 +130,11 @@ export default function Movimientos({ goTo, inicial }) {
                 <Field label="Otros seg."><input type="number" inputMode="numeric" value={form.seguros} onChange={e => sf('seguros', e.target.value)} style={inp} placeholder="0" /></Field>
                 <Field label="Otros"><input type="number" inputMode="numeric" value={form.otros} onChange={e => sf('otros', e.target.value)} style={inp} placeholder="0" /></Field>
               </div>
+              {xO > 0 && <div style={{ marginBottom: 10 }}><Field label="¿Qué es ese otro concepto?"><input value={form.otrosDetalle} onChange={e => sf('otrosDetalle', e.target.value)} placeholder="Ej. Comisión por canal" style={inp} /></Field></div>}
               <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #138A5B', paddingTop: 8 }}><span style={{ fontWeight: 800, fontSize: 14 }}>TOTAL A PAGAR</span><span style={{ fontWeight: 800, fontSize: 14, color: '#138A5B' }}>{fmtCOP(totalCred)}</span></div>
             </div>}
           </div>}
+          {!esTraslado && <EtiquetaPicker value={form.etiqueta_ids || []} onChange={v => sf('etiqueta_ids', v)} />}
           {!esTraslado && <Field label="Vincular a rubro del presupuesto" full><select value={form.presupuesto_id || ''} onChange={e => sf('presupuesto_id', e.target.value || null)} style={sel}><option value="">— Sin vincular —</option>{db.presupuesto.filter(p => p.periodo === form.fecha.slice(0, 7) + '-01').map(p => <option key={p.id} value={p.id}>{p.concepto}</option>)}</select></Field>}
         </div>
         {!esPersonal && form.cuenta_id && duenoCuenta(ix.cta[form.cuenta_id]) && form.tipo !== 'Ingreso' && <div style={{ marginTop: 10 }}><Aviso tipo="info">Se registra en {espacio.nombre} y queda como <b>aporte de {nombreMiembro(duenoCuenta(ix.cta[form.cuenta_id]))}</b> en su espacio personal.</Aviso></div>}
@@ -136,7 +142,20 @@ export default function Movimientos({ goTo, inicial }) {
         {anticipo && cuotaSel && <MotivoAnticipo cuota={cuotaSel} onClose={() => setAnticipo(false)} onConfirm={m => { setAnticipo(false); save(m) }} />}
       </Modal>}
       {importar && <ImportarMovimientos onClose={() => setImportar(false)} />}
+      {etiquetar && <EtiquetarMovimiento m={etiquetar} onClose={() => setEtiquetar(null)} onSave={async ids => { try { await actualizar('movimientos', etiquetar.id, { etiqueta_ids: ids }); setEtiquetar(null) } catch (e) { alert(e.message) } }} />}
     </div>
+  )
+}
+
+// Cambiar las etiquetas de un movimiento ya registrado (sirve también para pagos de crédito y de tarjeta).
+function EtiquetarMovimiento({ m, onClose, onSave }) {
+  const [ids, setIds] = useState(m.etiqueta_ids || [])
+  return (
+    <Modal title="Etiquetar movimiento" onClose={onClose}>
+      <div style={{ fontWeight: 700, fontSize: 14, color: T.tinta }}>{m.descripcion}</div><div style={{ fontSize: 12, color: T.gris, marginTop: 2, marginBottom: 14 }}>{fmtDate(m.fecha)} · {fmtCOP(m.monto)}</div>
+      <EtiquetaPicker value={ids} onChange={setIds} label="¿De quién o de qué es este movimiento?" />
+      <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={onClose} /><SaveBtn onClick={() => onSave(ids)}>Guardar etiquetas</SaveBtn></div>
+    </Modal>
   )
 }
 
@@ -179,8 +198,9 @@ function ImportarMovimientos({ onClose }) {
         const ctaRaw = get(r, 'cuenta'); const cta = ctaRaw ? (matchOpt(ctaRaw, cuentasCaja, x => x.nombre) || matchOpt(ctaRaw, cuentasCaja, x => nombreCuenta(x))) : null; if (ctaRaw && !cta) w.push(`Cuenta "${ctaRaw}" no existe → se usa la elegida abajo`)
         const moneda = get(r, 'moneda'); if (moneda && !/^cop$/i.test(moneda)) w.push(`Moneda ${moneda}: se toma el monto tal cual`)
         const ref = get(r, 'ref') || null; const dup = ref && refsExistentes.has(ref); if (dup) w.push('Ya importado antes (misma referencia); se omite')
-        const notas = [get(r, 'tags'), get(r, 'notas')].filter(Boolean).join(' · ') || null
-        return { n: i + 2, fecha, monto, tipoCol, descripcion, cat, catRaw, cta, ref, dup, notas, w, e }
+        const tags = (get(r, 'tags') || '').split(/[,;|]/).map(t => t.trim()).filter(Boolean)   // tags del archivo → etiquetas (se crean si no existen)
+        const notas = get(r, 'notas') || null
+        return { n: i + 2, fecha, monto, tipoCol, descripcion, cat, catRaw, cta, ref, dup, notas, tags, w, e }
       })
       if (!items.length) throw new Error('El archivo no tiene filas de datos.')
       const sugerida = conTipo >= items.length * 0.9 ? 'columna' : negativos > 0 ? 'signo' : 'salidas'
@@ -199,7 +219,9 @@ function ImportarMovimientos({ onClose }) {
       const mapC = Object.fromEntries(db.categorias.map(x => [norm(x.nombre), x.id]))
       if (crear) for (const n of parsed.nuevasCat) { const r = await insertar('categorias', { nombre: n, grupo: 'Variable' }); mapC[norm(n)] = r.id }
       const otro = db.categorias.find(c => c.nombre === 'Otro')?.id || null
-      const filas = validos.map(x => ({ fecha: x.fecha, tipo: tipoDe(x), descripcion: x.descripcion.slice(0, 200), monto: Math.abs(x.monto), categoria_id: x.cat?.id || mapC[norm(x.catRaw)] || otro, cuenta_id: x.cta?.id || cuentaId || null, origen: 'importacion', ref_externa: x.ref, notas: x.notas }))
+      const mapE = Object.fromEntries(db.etiquetas.map(x => [norm(x.nombre), x.id]))
+      for (const t of new Set(validos.flatMap(x => x.tags))) if (!mapE[norm(t)]) { const r = await insertar('etiquetas', { nombre: t.slice(0, 40) }); mapE[norm(t)] = r.id }
+      const filas = validos.map(x => ({ fecha: x.fecha, tipo: tipoDe(x), descripcion: x.descripcion.slice(0, 200), monto: Math.abs(x.monto), categoria_id: x.cat?.id || mapC[norm(x.catRaw)] || otro, cuenta_id: x.cta?.id || cuentaId || null, origen: 'importacion', ref_externa: x.ref, notas: x.notas, etiqueta_ids: [...new Set(x.tags.map(t => mapE[norm(t)]).filter(Boolean))] }))
       for (let i = 0; i < filas.length; i += 300) { setBusy(`Importando ${Math.min(i + 300, filas.length)} de ${filas.length}…`); await insertarVarios('movimientos', filas.slice(i, i + 300)) }
       onClose()
     } catch (e) { setErr(e.message); setBusy(null) }
@@ -207,7 +229,7 @@ function ImportarMovimientos({ onClose }) {
   return (
     <Modal title="Importar movimientos" onClose={onClose}>
       {!parsed ? <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <Aviso tipo="info">CSV con columnas <b>fecha</b> y <b>monto</b> (obligatorias) y opcionales <code>descripcion, tipo, categoria, cuenta, notas, id</code>. También entiende la exportación de <b>MonAi</b> (date, purpose, amount, category, id…). Si el archivo trae <code>id</code>, puedes reimportarlo sin duplicar. Si cargas un histórico, pon antes en la cuenta su <b>saldo al empezar</b> y la <b>fecha de corte</b> (Ajustes → Cuentas): lo anterior al corte no altera el saldo.</Aviso>
+        <Aviso tipo="info">CSV con columnas <b>fecha</b> y <b>monto</b> (obligatorias) y opcionales <code>descripcion, tipo, categoria, cuenta, etiquetas, notas, id</code> (las etiquetas se crean si no existen). También entiende la exportación de <b>MonAi</b> (date, purpose, amount, category, id…). Si el archivo trae <code>id</code>, puedes reimportarlo sin duplicar. Si cargas un histórico, pon antes en la cuenta su <b>saldo al empezar</b> y la <b>fecha de corte</b> (Ajustes → Cuentas): lo anterior al corte no altera el saldo.</Aviso>
         <button onClick={plantilla} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, border: `1.5px solid ${T.divisor}`, borderRadius: 20, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: T.tinta, fontFamily: 'inherit' }}><Icon name="download" size={16} />Descargar plantilla CSV</button>
         <div onClick={() => fileRef.current.click()} style={{ border: '2px dashed #D9D2EA', borderRadius: 14, padding: '28px 16px', textAlign: 'center', cursor: 'pointer', background: T.superficie }}>
           <div style={{ color: T.morado, marginBottom: 8 }}><Icon name="upload" size={30} sw={1.5} /></div><div style={{ fontWeight: 700, fontSize: 14, color: T.moradoOscuro }}>Toca para elegir el archivo</div>

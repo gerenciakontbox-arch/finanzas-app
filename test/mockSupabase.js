@@ -9,9 +9,9 @@ const CATS = [['Arriendo', 'Fijo'], ['Servicios públicos', 'Fijo'], ['Internet'
 const CATS_EMP = [['Arriendo', 'Fijo'], ['Nómina', 'Fijo'], ['Honorarios', 'Variable'], ['Software y suscripciones', 'Fijo'], ['Impuestos', 'Provisión'], ['Cuota crédito', 'Amortización crédito'], ['Pago tarjeta crédito', 'Amortización crédito'], ['Ventas', 'Variable'], ['Otro', 'Variable']]
 
 export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}) {
-  const T = {}; const tablas = ['app_meta', 'espacios', 'espacio_miembros', 'perfiles', 'categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'programado', 'programado_adjuntos', 'movimientos', 'bitacora', 'push_suscripciones', 'consentimientos', 'eventos', 'perfil_usuario', 'ofertas', 'senales_def', 'app_admins', 'accesos_operador', 'tc_extractos', 'tc_lecturas']
+  const T = {}; const tablas = ['app_meta', 'espacios', 'espacio_miembros', 'perfiles', 'categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'ajustes_saldo_deuda', 'etiquetas', 'programado', 'programado_adjuntos', 'movimientos', 'bitacora', 'push_suscripciones', 'consentimientos', 'eventos', 'perfil_usuario', 'ofertas', 'senales_def', 'app_admins', 'accesos_operador', 'tc_extractos', 'tc_lecturas']
   tablas.forEach(t => T[t] = [])
-  T.app_meta.push({ clave: 'schema_version', valor: '10' }); T.app_meta.push({ clave: 'politica_version', valor: '2026-10-20' })
+  T.app_meta.push({ clave: 'schema_version', valor: '11' }); T.app_meta.push({ clave: 'politica_version', valor: '2026-10-20' })
   T.senales_def.push({ codigo: 'creditos_multiples', nombre: 'Varios créditos activos', descripcion: 'Tienes dos o más créditos activos.', servicio: 'Reestructuración y optimización de deuda', activa: true }, { codigo: 'activos_sin_cobertura', nombre: 'Activos sin seguro registrado', descripcion: 'Tienes vehículos o inmuebles sin un seguro programado.', servicio: 'Revisión de coberturas', activa: true })
   T.app_admins.push({ user_id: 'u-andres', nombre: 'Andrés (operador)' })
   let session = null; const listeners = []
@@ -35,6 +35,11 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
   }
   const sembrar = (e, t) => (t === 'empresa' ? CATS_EMP : CATS).forEach(([n, g], i) => T.categorias.push({ id: uid(), espacio_id: e, nombre: n, grupo: g, afecta_caja: true, activo: true, activa: true, orden: i, creado_en: now() }))
   const catEquiv = (c, dest) => { if (!c) return null; const src = T.categorias.find(x => x.id === c); if (!src) return null; if (src.espacio_id === dest) return c; let d = T.categorias.find(x => x.espacio_id === dest && x.nombre.toLowerCase() === src.nombre.toLowerCase()); if (!d) { d = { id: uid(), espacio_id: dest, nombre: src.nombre, grupo: src.grupo, afecta_caja: true, activo: true, activa: true, orden: src.orden, creado_en: now() }; T.categorias.push(d) } return d.id }
+  // etiquetas (0011): equivalente por nombre en el espacio destino; guardia de arrays
+  const normE = n => String(n || '').trim().toLowerCase()
+  const etiEquiv = (id, dest) => { const src = T.etiquetas.find(x => x.id === id); if (!src) return null; if (src.espacio_id === dest) return id; let d = T.etiquetas.find(x => x.espacio_id === dest && normE(x.nombre) === normE(src.nombre)); if (!d) { d = { id: uid(), espacio_id: dest, nombre: src.nombre, color: src.color, orden: src.orden, creado_por: me(), creado_en: now() }; T.etiquetas.push(d) } return d.id }
+  const guardiaEtiquetas = (t, row) => { if (t === 'movimientos' && row.programado_id && !(row.etiqueta_ids || []).length) row.etiqueta_ids = [...(T.programado.find(p => p.id === row.programado_id)?.etiqueta_ids || [])]; const out = []; for (const x of row.etiqueta_ids || []) { const y = etiEquiv(x, row.espacio_id); if (y && !out.includes(y)) out.push(y) } row.etiqueta_ids = out }
+  const validarEtiqueta = (row, selfId) => { const n = String(row.nombre ?? '').trim(); if (!n || n.length > 40) throw new Error('new row for relation "etiquetas" violates check constraint "etiquetas_nombre_check"'); if (T.etiquetas.some(x => x.id !== selfId && x.espacio_id === row.espacio_id && normE(x.nombre) === normE(n))) throw new Error('duplicate key value violates unique constraint "etiquetas_nombre_uq"') }
   const catEnUso = c => T.movimientos.some(m => m.categoria_id === c) || T.presupuesto.some(p => p.categoria_id === c) || T.programado.some(p => p.categoria_id === c) || T.tc_cargos.some(p => p.categoria_id === c)
 
   // ── visibilidad (RLS) ──
@@ -68,7 +73,8 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
   const cascade = (t, r) => {
     if (t === 'cuentas') { T.tc_cargos.filter(c => c.cuenta_id === r.id).forEach(c => cascade('tc_cargos', c)); T.tc_cargos = T.tc_cargos.filter(c => c.cuenta_id !== r.id); T.cuentas_espacio = T.cuentas_espacio.filter(x => x.cuenta_id !== r.id) }
     if (t === 'tc_cargos') T.cuotas_pagadas = T.cuotas_pagadas.filter(c => c.cargo_id !== r.id)
-    if (t === 'deudas') { T.cuotas_pagadas = T.cuotas_pagadas.filter(c => c.deuda_id !== r.id); T.abonos_capital = T.abonos_capital.filter(a => a.deuda_id !== r.id) }
+    if (t === 'deudas') { T.cuotas_pagadas = T.cuotas_pagadas.filter(c => c.deuda_id !== r.id); T.abonos_capital = T.abonos_capital.filter(a => a.deuda_id !== r.id); T.ajustes_saldo_deuda = T.ajustes_saldo_deuda.filter(a => a.deuda_id !== r.id) }
+    if (t === 'etiquetas') for (const tb of ['movimientos', 'presupuesto', 'programado']) T[tb].forEach(x => { if ((x.etiqueta_ids || []).includes(r.id)) x.etiqueta_ids = x.etiqueta_ids.filter(i => i !== r.id) })
     if (t === 'movimientos') { T.cuotas_pagadas.forEach(c => { if (c.movimiento_id === r.id) c.movimiento_id = null }); T.abonos_capital = T.abonos_capital.filter(a => a.movimiento_id !== r.id); T.movimientos = T.movimientos.filter(x => x.espejo_de !== r.id) }
     if (t === 'programado') T.programado_adjuntos = T.programado_adjuntos.filter(a => a.programado_id !== r.id)
     if (t === 'espacio_miembros') { }
@@ -83,7 +89,7 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
       if (st.op === 'insert') {
         const arr = Array.isArray(st.payload) ? st.payload : [st.payload]
         if (t === 'eventos' && !consiente(me(), 'analitica')) throw new Error('new row violates row-level security policy for table "eventos"')
-        const DEF = { programado: () => ({ estado: 'Pendiente', serie_id: uid(), ficha_valores: {} }), movimientos: () => ({ origen: 'manual', desglose: {} }), cuentas: () => ({ activo: true }), categorias: () => ({ grupo: 'Variable', afecta_caja: true, activa: true }), presupuesto: () => ({ estado: 'Planificado' }), deudas: () => ({ estado: 'Activo', tasa_mensual: 0 }) }
+        const DEF = { programado: () => ({ estado: 'Pendiente', serie_id: uid(), ficha_valores: {}, etiqueta_ids: [] }), movimientos: () => ({ origen: 'manual', desglose: {}, etiqueta_ids: [] }), cuentas: () => ({ activo: true }), etiquetas: () => ({ color: '#4B1D9E', orden: 0 }), categorias: () => ({ grupo: 'Variable', afecta_caja: true, activa: true }), presupuesto: () => ({ estado: 'Planificado', etiqueta_ids: [] }), deudas: () => ({ estado: 'Activo', tasa_mensual: 0 }) }
         const out = arr.map(r => {
           const row = { id: uid(), creado_por: me(), creado_en: now(), actualizado_por: me(), actualizado_en: now(), ...(DEF[t] ? DEF[t]() : {}), ...r }
           if (t === 'movimientos') { if (row.espejo_de) throw new Error('new row violates row-level security policy for table "movimientos"'); row.pagador_id = duenoCuenta(row.cuenta_id) || row.pagador_id || null; if (row.tipo === 'Transferencia') { row.subtipo ||= 'traslado'; if (row.subtipo === 'traslado' && !row.cuenta_destino_id) throw new Error('Un traslado necesita cuenta destino') } }
@@ -92,6 +98,8 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
           if (t === 'movimientos' && row.ref_externa && T.movimientos.some(m => m.espacio_id === row.espacio_id && m.ref_externa === row.ref_externa)) throw new Error('duplicate key value violates unique constraint "movimientos_ref_externa_uq"')
           if (t === 'tc_cargos' && row.ref_extracto && T.tc_cargos.some(c => c.cuenta_id === row.cuenta_id && c.ref_extracto === row.ref_extracto)) throw new Error('duplicate key value violates unique constraint "tc_cargos_ref_extracto_uq"')
           if (t === 'tc_lecturas') { row.estado ||= 'pendiente' }
+          if (t === 'etiquetas') validarEtiqueta(row)
+          if (['movimientos', 'presupuesto', 'programado'].includes(t)) guardiaEtiquetas(t, row)
           if (!(t === 'eventos' ? row.user_id === me() : visible(t, row))) throw new Error('new row violates row-level security policy for table "' + t + '"'); if (t === 'cuentas') setDueno(row); T[t].push(row)
           if (t === 'movimientos') sincronizarEspejos(row)
           return row
@@ -105,7 +113,8 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
           if (t === 'espacios' && (!esAdmin(r.id) || r.tipo === 'personal')) return
           if (t === 'espacio_miembros' && !esAdmin(r.espacio_id)) return
           if (t === 'presupuesto' && r.programado_id && ['monto', 'fecha_tentativa', 'estado', 'concepto', 'categoria_id', 'cuenta_id', 'activo_id', 'periodo'].some(k => k in st.payload && String(st.payload[k]) !== String(r[k]))) throw new Error('Este rubro está programado: se edita y se paga desde Programado. Desprográmalo para cambiarlo aquí.')
-          Object.assign(r, st.payload, { actualizado_por: me(), actualizado_en: now() }); if (t === 'movimientos') sincronizarEspejos(r)
+          if (t === 'etiquetas' && 'nombre' in st.payload) validarEtiqueta({ ...r, ...st.payload }, r.id)
+          Object.assign(r, st.payload, { actualizado_por: me(), actualizado_en: now() }); if (['movimientos', 'presupuesto', 'programado'].includes(t) && ('etiqueta_ids' in st.payload || 'espacio_id' in st.payload)) guardiaEtiquetas(t, r); if (t === 'movimientos') sincronizarEspejos(r)
         }); return rows
       }
       if (st.op === 'delete') {
@@ -166,9 +175,9 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
     habilitar_cuenta: ({ p_cuenta, p_espacio, p_on }) => { if (duenoCuenta(p_cuenta) !== me()) throw new Error('Solo el dueño de la cuenta puede habilitarla'); if (!misEspacios().includes(p_espacio)) throw new Error('No eres miembro de ese espacio'); if (p_on) { if (!T.cuentas_espacio.some(x => x.cuenta_id === p_cuenta && x.espacio_id === p_espacio)) T.cuentas_espacio.push({ cuenta_id: p_cuenta, espacio_id: p_espacio, creado_por: me(), creado_en: now() }) } else T.cuentas_espacio = T.cuentas_espacio.filter(x => !(x.cuenta_id === p_cuenta && x.espacio_id === p_espacio)) },
     mover_item: ({ p_tabla, p_id, p_destino }) => {
       if (!misEspacios().includes(p_destino)) throw new Error('No eres miembro del espacio destino')
-      const mv = (t, id) => { const r = T[t].find(x => x.id === id); if (!r || !misEspacios().includes(r.espacio_id)) throw new Error(t + ' no encontrado'); r.espacio_id = p_destino; if ('categoria_id' in r && t !== 'activos' && t !== 'deudas') r.categoria_id = catEquiv(r.categoria_id, p_destino); return r }
+      const mv = (t, id) => { const r = T[t].find(x => x.id === id); if (!r || !misEspacios().includes(r.espacio_id)) throw new Error(t + ' no encontrado'); r.espacio_id = p_destino; if ('categoria_id' in r && t !== 'activos' && t !== 'deudas') r.categoria_id = catEquiv(r.categoria_id, p_destino); if (['movimientos', 'presupuesto', 'programado'].includes(t)) guardiaEtiquetas(t, r); return r }
       if (p_tabla === 'activos') { mv('activos', p_id); T.deudas.filter(d => d.activo_id === p_id && d.estado === 'Activo').forEach(d => rpcs.mover_item({ p_tabla: 'deudas', p_id: d.id, p_destino })); T.programado.filter(p => p.activo_id === p_id && p.estado === 'Pendiente').forEach(p => rpcs.mover_item({ p_tabla: 'programado', p_id: p.id, p_destino })); T.tc_cargos.filter(c => c.activo_id === p_id && T.cuotas_pagadas.filter(x => x.cargo_id === c.id).length < c.cuotas).forEach(c => rpcs.mover_item({ p_tabla: 'tc_cargos', p_id: c.id, p_destino })) }
-      else if (p_tabla === 'deudas') { mv('deudas', p_id); T.cuotas_pagadas.filter(c => c.deuda_id === p_id).forEach(c => c.espacio_id = p_destino); T.abonos_capital.filter(c => c.deuda_id === p_id).forEach(c => c.espacio_id = p_destino); T.programado.filter(p => p.deuda_id === p_id && p.estado === 'Pendiente').forEach(p => rpcs.mover_item({ p_tabla: 'programado', p_id: p.id, p_destino })) }
+      else if (p_tabla === 'deudas') { mv('deudas', p_id); T.cuotas_pagadas.filter(c => c.deuda_id === p_id).forEach(c => c.espacio_id = p_destino); T.abonos_capital.filter(c => c.deuda_id === p_id).forEach(c => c.espacio_id = p_destino); T.ajustes_saldo_deuda.filter(c => c.deuda_id === p_id).forEach(c => c.espacio_id = p_destino); T.programado.filter(p => p.deuda_id === p_id && p.estado === 'Pendiente').forEach(p => rpcs.mover_item({ p_tabla: 'programado', p_id: p.id, p_destino })) }
       else if (p_tabla === 'programado') { mv('programado', p_id); T.programado_adjuntos.filter(a => a.programado_id === p_id).forEach(a => a.espacio_id = p_destino) }
       else if (p_tabla === 'tc_cargos') { mv('tc_cargos', p_id); T.cuotas_pagadas.filter(c => c.cargo_id === p_id).forEach(c => c.espacio_id = p_destino) }
       else if (p_tabla === 'presupuesto') mv('presupuesto', p_id)
@@ -176,7 +185,7 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
     },
     completar_programado: ({ p_id, p_fecha, p_monto, p_cuenta_id, p_desglose, p_motivo }) => {
       const r = T.programado.find(x => x.id === p_id && misEspacios().includes(x.espacio_id)); if (!r) throw new Error('Programado no encontrado'); if (r.estado !== 'Pendiente') throw new Error('Esta ocurrencia ya fue completada')
-      const m = { id: uid(), espacio_id: r.espacio_id, fecha: p_fecha, tipo: r.flujo === 'ingreso' ? 'Ingreso' : 'Salida', descripcion: r.nombre, monto: p_monto, categoria_id: r.categoria_id, cuenta_id: p_cuenta_id || r.cuenta_id, cuenta_destino_id: r.cuenta_destino_id || null, modo_destino: r.modo_destino || null, activo_id: r.activo_id, programado_id: r.id, deuda_id: r.deuda_id, presupuesto_id: r.presupuesto_id || null, desglose: p_desglose || {}, origen: 'programado', motivo: p_motivo || null, creado_por: me(), creado_en: now() }
+      const m = { id: uid(), espacio_id: r.espacio_id, fecha: p_fecha, tipo: r.flujo === 'ingreso' ? 'Ingreso' : 'Salida', descripcion: r.nombre, monto: p_monto, categoria_id: r.categoria_id, cuenta_id: p_cuenta_id || r.cuenta_id, cuenta_destino_id: r.cuenta_destino_id || null, modo_destino: r.modo_destino || null, activo_id: r.activo_id, programado_id: r.id, deuda_id: r.deuda_id, presupuesto_id: r.presupuesto_id || null, desglose: p_desglose || {}, origen: 'programado', motivo: p_motivo || null, etiqueta_ids: [...(r.etiqueta_ids || [])], creado_por: me(), creado_en: now() }
       m.pagador_id = duenoCuenta(m.cuenta_id); T.movimientos.push(m); sincronizarEspejos(m); Object.assign(r, { estado: 'Completado', completado_en: p_fecha, movimiento_id: m.id })
       if (r.presupuesto_id) { const pr = T.presupuesto.find(x => x.id === r.presupuesto_id); if (pr) Object.assign(pr, { estado: 'Pagado', fecha_efectiva: p_fecha, programado_id: null }) }
       const nuevo = siguienteOcurrencia(r); if (nuevo && r.presupuesto_id) vincularOcurrencia(nuevo, r.presupuesto_id)
@@ -220,12 +229,24 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
     pagar_cuota_credito: ({ p_deuda, p_numero, p_fecha, p_cuenta, p_capital, p_interes, p_extras = {}, p_motivo = null, p_seguro = 0 }) => {
       const d = T.deudas.find(x => x.id === p_deuda && misEspacios().includes(x.espacio_id)); if (!d) throw new Error('Crédito no encontrado')
       if (T.cuotas_pagadas.some(c => c.deuda_id === d.id && c.numero === p_numero)) throw new Error(`La cuota ${p_numero} ya está pagada`)
-      const extras = ['cuota_manejo', 'mora', 'seguros', 'otros'].reduce((a, k) => a + (+p_extras[k] || 0), 0); const total = p_capital + p_interes + (+p_seguro || 0) + extras
+      for (const k of ['cuota_manejo', 'mora', 'seguros', 'otros']) if ((+p_extras[k] || 0) < 0) throw new Error(`El concepto ${k} no puede ser negativo`)
+      const extras = ['cuota_manejo', 'mora', 'seguros', 'otros'].reduce((a, k) => a + (+p_extras[k] || 0), 0); const parcial = +p_extras.parcial || 0
+      if (parcial > 0) throw new Error('Un pago parcial se registra como valor negativo'); if (parcial < 0 && !String(p_motivo || '').trim()) throw new Error('Pagaste menos que la cuota: indica el motivo')
+      if ((+p_extras.otros || 0) > 0 && !String(p_extras.otros_detalle || '').trim()) throw new Error('Describe el concepto "otros"')
+      const total = p_capital + p_interes + (+p_seguro || 0) + extras + parcial; if (total <= 0) throw new Error('El valor pagado debe ser mayor que cero')
       const cat = T.categorias.find(c => c.espacio_id === d.espacio_id && c.nombre === 'Cuota crédito')?.id || null
-      const m = { id: uid(), espacio_id: d.espacio_id, fecha: p_fecha, tipo: 'Salida', descripcion: `${d.nombre} — cuota ${p_numero}`, monto: total, categoria_id: cat, cuenta_id: p_cuenta || d.cuenta_pago_id, activo_id: d.activo_id, deuda_id: d.id, origen: 'credito', motivo: p_motivo, desglose: { cuota: p_numero, capital: p_capital, interes: p_interes, seguro: +p_seguro || 0, esperado: p_capital + p_interes + (+p_seguro || 0), diferencia: extras, ...p_extras }, creado_por: me(), creado_en: now() }
+      const m = { id: uid(), espacio_id: d.espacio_id, fecha: p_fecha, tipo: 'Salida', descripcion: `${d.nombre} — cuota ${p_numero}`, monto: total, categoria_id: cat, cuenta_id: p_cuenta || d.cuenta_pago_id, activo_id: d.activo_id, deuda_id: d.id, origen: 'credito', motivo: p_motivo, desglose: { cuota: p_numero, capital: p_capital, interes: p_interes, seguro: +p_seguro || 0, esperado: p_capital + p_interes + (+p_seguro || 0), diferencia: extras + parcial, ...p_extras }, etiqueta_ids: [], creado_por: me(), creado_en: now() }
       m.pagador_id = duenoCuenta(m.cuenta_id); T.movimientos.push(m); sincronizarEspejos(m)
       T.cuotas_pagadas.push({ id: uid(), espacio_id: d.espacio_id, deuda_id: d.id, numero: p_numero, fecha_pago: p_fecha, monto_esperado: p_capital + p_interes + (+p_seguro || 0), monto_pagado: total, capital: p_capital, interes: p_interes, seguro: +p_seguro || 0, movimiento_id: m.id, creado_por: me(), creado_en: now() })
       return m.id
+    },
+    ajustar_saldo_deuda: ({ p_deuda, p_fecha, p_saldo_real, p_saldo_calculado, p_motivo }) => {
+      const d = T.deudas.find(x => x.id === p_deuda && misEspacios().includes(x.espacio_id)); if (!d) throw new Error('Crédito no encontrado')
+      if (d.estado !== 'Activo') throw new Error('El crédito no está activo'); if (!(p_saldo_real >= 0)) throw new Error('El saldo real no puede ser negativo'); if (!String(p_motivo || '').trim()) throw new Error('Indica el motivo del ajuste (p. ej. saldo según extracto)')
+      const n = T.cuotas_pagadas.filter(c => c.deuda_id === d.id).length + (+d.cuotas_previas || 0); if (n >= d.total_cuotas) throw new Error('No quedan cuotas por amortizar')
+      T.ajustes_saldo_deuda = T.ajustes_saldo_deuda.filter(a => !(a.deuda_id === d.id && a.despues_de_cuota === n))
+      const a = { id: uid(), espacio_id: d.espacio_id, deuda_id: d.id, fecha: p_fecha, saldo_calculado: +p_saldo_calculado || 0, saldo_real: +p_saldo_real, diferencia: +p_saldo_real - (+p_saldo_calculado || 0), despues_de_cuota: n, motivo: String(p_motivo).trim(), creado_por: me(), creado_en: now() }
+      T.ajustes_saldo_deuda.push(a); return a.id
     },
     abonar_capital: ({ p_deuda, p_fecha, p_monto, p_cuenta, p_modo, p_motivo = null }) => {
       const d = T.deudas.find(x => x.id === p_deuda && misEspacios().includes(x.espacio_id)); if (!d) throw new Error('Crédito no encontrado')

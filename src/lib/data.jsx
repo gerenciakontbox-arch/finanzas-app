@@ -7,7 +7,7 @@ import { configurarEventos, track } from './eventos'
 import { useAuth } from './auth'
 import { TC } from './util'
 
-const TABLAS = ['categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'programado', 'programado_adjuntos', 'movimientos', 'perfil_usuario', 'ofertas', 'senales_def', 'tc_extractos']
+const TABLAS = ['categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'ajustes_saldo_deuda', 'etiquetas', 'programado', 'programado_adjuntos', 'movimientos', 'perfil_usuario', 'ofertas', 'senales_def', 'tc_extractos']
 const Ctx = createContext(null)
 export const useData = () => useContext(Ctx)
 
@@ -84,6 +84,8 @@ export function DataProvider({ children }) {
       tc_extractos: (all.tc_extractos || []).filter(x => x.espacio_id === e),
       cuotas_pagadas: all.cuotas_pagadas.filter(x => x.espacio_id === e),
       abonos_capital: (all.abonos_capital || []).filter(x => x.espacio_id === e),
+      ajustes_saldo_deuda: (all.ajustes_saldo_deuda || []).filter(x => x.espacio_id === e),
+      etiquetas: (all.etiquetas || []).filter(x => x.espacio_id === e).sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre)),
       programado: all.programado.filter(x => x.espacio_id === e),
       programado_adjuntos: all.programado_adjuntos.filter(x => x.espacio_id === e),
       movimientos: all.movimientos.filter(x => x.espacio_id === e),
@@ -117,7 +119,7 @@ export function useIndices() {
   const { all } = useData()
   return useMemo(() => {
     if (!all) return null
-    const byId = t => Object.fromEntries(all[t].map(r => [r.id, r]))
-    return { cat: byId('categorias'), cta: byId('cuentas'), act: byId('activos'), deu: byId('deudas'), pre: byId('presupuesto'), prog: byId('programado'), ent: {} }
+    const byId = t => Object.fromEntries((all[t] || []).map(r => [r.id, r]))
+    return { cat: byId('categorias'), cta: byId('cuentas'), act: byId('activos'), deu: byId('deudas'), pre: byId('presupuesto'), prog: byId('programado'), eti: byId('etiquetas'), ent: {} }
   }, [all])
 }

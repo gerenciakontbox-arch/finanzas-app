@@ -8,3 +8,4 @@ esperar() { local f=$1 n=$2; local got; got=$(psql -q -v ON_ERROR_STOP=0 -f "$f"
 esperar test/schema2.test.sql 9
 esperar test/schema3.test.sql 6
 esperar test/schema6.test.sql 7
+esperar test/schema11.test.sql 7

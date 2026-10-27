@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useData, useIndices } from '../lib/data'
 import { useAuth } from '../lib/auth'
+import { EtiquetaPicker, ChipsDe } from './Etiquetas'
 import { Kpi, Card, Icon, IcoText, Modal, Field, inp, sel, PBtn, SaveBtn, CancelBtn, SmallBtn, PrimaryBtn, Aviso, BarChartCJ, useForm } from '../lib/ui'
 import { fmtCOP, fmtDate, today, addDays, addMonths, daysLeft, TC, TIPOS_PROG, PERIODICIDADES } from '../lib/util'
 import { parseCSV, parseMonto, parseFecha, matchOpt, toCSV, descargar, leerArchivoTexto, norm } from '../lib/csv'
@@ -11,7 +12,7 @@ export default function Programado() {
   const { db, insertar, actualizar, borrar, rpc, nombreCuenta, nombreMiembro, duenoCuenta } = useData(); const ix = useIndices(); const { esPersonal, espacio } = useAuth()
   const [flujo, setFlujo] = useState('salida'); const [vista, setVista] = useState('pendientes'); const [modal, setModal] = useState(null); const [ficha, setFicha] = useState(null); const [completar, setCompletar] = useState(null); const [importar, setImportar] = useState(false)
   const cuentasCaja = db.cuentas.filter(c => c.tipo !== TC)
-  const empty = f => ({ flujo: f, tipo: f === 'ingreso' ? 'Honorarios' : 'Servicio', nombre: '', categoria_id: db.categorias.find(c => f === 'ingreso' ? c.nombre === 'Honorarios' : c.nombre === 'Servicios públicos')?.id || db.categorias.find(c => c.activa !== false)?.id || null, activo_id: null, cuenta_id: cuentasCaja[0]?.id || null, cuenta_destino_id: '', modo_destino: espacio.tipo === 'empresa' ? 'ingreso' : 'devolucion', aMiembro: false, deuda_id: null, monto: '', periodicidad: 'Mensual', vencimiento: addDays(today(), 7), ficha_url: '', ficha_usuario: '', ficha_referencia: '', ficha_instrucciones: '', ficha_valores: {}, notas: '' })
+  const empty = f => ({ flujo: f, tipo: f === 'ingreso' ? 'Honorarios' : 'Servicio', nombre: '', categoria_id: db.categorias.find(c => f === 'ingreso' ? c.nombre === 'Honorarios' : c.nombre === 'Servicios públicos')?.id || db.categorias.find(c => c.activa !== false)?.id || null, activo_id: null, cuenta_id: cuentasCaja[0]?.id || null, cuenta_destino_id: '', modo_destino: espacio.tipo === 'empresa' ? 'ingreso' : 'devolucion', aMiembro: false, deuda_id: null, monto: '', periodicidad: 'Mensual', vencimiento: addDays(today(), 7), ficha_url: '', ficha_usuario: '', ficha_referencia: '', ficha_instrucciones: '', ficha_valores: {}, notas: '', etiqueta_ids: [] })
   const [form, sf, setForm] = useForm(empty('salida'))
   const t = today(), t30 = addDays(t, 30)
   const todos = db.programado.filter(p => p.flujo === flujo)
@@ -23,7 +24,7 @@ export default function Programado() {
 
   const save = async () => {
     if (!form.nombre || !form.monto) return
-    const row = { flujo: form.flujo, tipo: form.tipo, nombre: form.nombre, categoria_id: form.categoria_id || null, activo_id: form.activo_id || null, cuenta_id: form.cuenta_id || null, cuenta_destino_id: form.flujo === 'salida' && form.aMiembro && form.cuenta_destino_id ? form.cuenta_destino_id : null, modo_destino: form.flujo === 'salida' && form.aMiembro && form.cuenta_destino_id ? form.modo_destino : null, pagador_id: form.cuenta_id ? duenoCuenta(ix.cta[form.cuenta_id]) : null, deuda_id: form.deuda_id || null, monto: parseMonto(form.monto), periodicidad: form.periodicidad, vencimiento: form.vencimiento, ficha_url: form.ficha_url || null, ficha_usuario: form.ficha_usuario || null, ficha_referencia: form.ficha_referencia || null, ficha_instrucciones: form.ficha_instrucciones || null, ficha_valores: form.ficha_valores || {}, notas: form.notas || null, ...(modal === 'add' ? { estado: 'Pendiente' } : {}) }
+    const row = { flujo: form.flujo, tipo: form.tipo, nombre: form.nombre, categoria_id: form.categoria_id || null, activo_id: form.activo_id || null, cuenta_id: form.cuenta_id || null, cuenta_destino_id: form.flujo === 'salida' && form.aMiembro && form.cuenta_destino_id ? form.cuenta_destino_id : null, modo_destino: form.flujo === 'salida' && form.aMiembro && form.cuenta_destino_id ? form.modo_destino : null, pagador_id: form.cuenta_id ? duenoCuenta(ix.cta[form.cuenta_id]) : null, deuda_id: form.deuda_id || null, monto: parseMonto(form.monto), periodicidad: form.periodicidad, vencimiento: form.vencimiento, ficha_url: form.ficha_url || null, ficha_usuario: form.ficha_usuario || null, ficha_referencia: form.ficha_referencia || null, ficha_instrucciones: form.ficha_instrucciones || null, ficha_valores: form.ficha_valores || {}, notas: form.notas || null, etiqueta_ids: form.etiqueta_ids || [], ...(modal === 'add' ? { estado: 'Pendiente' } : {}) }
     try { modal === 'add' ? await insertar('programado', row) : await actualizar('programado', modal.id, row); setModal(null) } catch (e) { alert(e.message) }
   }
   const omitir = async p => { if (!window.confirm('¿Omitir esta ocurrencia? No se registra movimiento y se crea la siguiente.' + (p.presupuesto_id ? ' El rubro del presupuesto vuelve a Planificado.' : ''))) return; try { await rpc('omitir_programado', { p_id: p.id }) } catch (e) { alert(e.message) } }
@@ -51,7 +52,7 @@ export default function Programado() {
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
               <div style={{ background: ing ? '#138A5B' : '#4B1D9E', borderRadius: 10, padding: '9px 11px', color: '#fff', flexShrink: 0 }}><Icon name={PICO[p.tipo] || 'pin'} size={18} /></div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, color: '#1B1B1F' }}>{p.nombre}</div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#1B1B1F' }}>{p.nombre}</div><ChipsDe ids={p.etiqueta_ids} />
                 <div style={{ fontSize: 11, color: '#6E6E73', marginTop: 2 }}>{p.periodicidad}{p.activo_id ? ` · ${ix.act[p.activo_id]?.nombre}` : ''} · {ix.cta[p.cuenta_id] ? nombreCuenta(ix.cta[p.cuenta_id]) : '—'}{p.cuenta_destino_id && ix.cta[p.cuenta_destino_id] ? ` → ${nombreCuenta(ix.cta[p.cuenta_destino_id])}` : ''}{p.presupuesto_id ? ' · del presupuesto' : ''}</div>
                 {tieneFicha && <button onClick={() => setFicha(p)} style={{ marginTop: 4, fontSize: 10, background: '#F3F1F8', color: '#4B1D9E', border: '1px solid #D9D2EA', borderRadius: 7, padding: '3px 8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="file" size={11} />Ver ficha de pago</button>}
               </div>
@@ -205,6 +206,7 @@ function FormProgramado({ form, sf, setForm, modal, onClose, onSave }) {
         {modal === 'add' && <div style={{ fontSize: 10, color: '#9A9AA0', marginTop: 8 }}>Las imágenes se adjuntan después de guardar (botón Editar).</div>}
       </div>}
       <div style={{ marginTop: 12 }}><Field label="Notas"><input value={form.notas || ''} onChange={e => sf('notas', e.target.value)} style={inp} /></Field></div>
+      <div style={{ marginTop: 12 }}><EtiquetaPicker value={form.etiqueta_ids || []} onChange={v => sf('etiqueta_ids', v)} /></div>
       <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={onClose} /><SaveBtn onClick={onSave} disabled={!form.nombre || !form.monto}>Guardar</SaveBtn></div>
     </Modal>
   )

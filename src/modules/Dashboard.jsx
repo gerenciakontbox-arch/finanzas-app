@@ -1,7 +1,8 @@
 import { useData, useIndices } from '../lib/data'
 import { Icon, T, BarChartCJ, PieChartCJ } from '../lib/ui'
 import { fmtCOP, fmtDate, today, addDays, daysLeft, GRUPOS, TC, primeroDelMes } from '../lib/util'
-import { deudaTotal, presupuestoConEjecucion, resumenTarjeta, indicePagadas, aportesPorEspacio, aportesPorMiembro, aportesPlanificados } from '../lib/finanzas'
+import { deudaTotal, presupuestoConEjecucion, resumenTarjeta, indicePagadas, aportesPorEspacio, aportesPorMiembro, aportesPlanificados, costoFinanciero, gastosPorCategoria, porEtiqueta } from '../lib/finanzas'
+import { Chip } from './Etiquetas'
 import { useAuth } from '../lib/auth'
 import { TIPO_ICON } from '../App'
 import { OfertaInicio } from './Privacidad'
@@ -51,7 +52,9 @@ export default function Dashboard({ goTo }) {
   const idx = indicePagadas(db.cuotas_pagadas)
   const tcs = db.cuentas.filter(c => c.tipo === TC).map(c => resumenTarjeta(c, db.tc_cargos, idx)).filter(r => r.proximaFactura > 0)
   const byGrupo = GRUPOS.map(g => { const it = pce.filter(p => ix.cat[p.categoria_id]?.grupo === g); return { name: g.length > 12 ? g.slice(0, 11) + '…' : g, p: it.reduce((a, x) => a + x.monto, 0), e: it.reduce((a, x) => a + x.ejecutado, 0) } }).filter(x => x.p > 0)
-  const byCat = {}; movMes.filter(m => m.tipo === 'Salida').forEach(m => { const n = ix.cat[m.categoria_id]?.nombre || 'Sin categoría'; byCat[n] = (byCat[n] || 0) + +m.monto })
+  const byCat = gastosPorCategoria(movMes, ix.cat)   // el capital de las cuotas no es gasto: solo entra el costo financiero
+  const fin = costoFinanciero(movMes)
+  const etiq = porEtiqueta(movMes, db.etiquetas || [])
   const topCat = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 5)
   const ingresosPend = db.programado.filter(p => p.flujo === 'ingreso' && p.estado === 'Pendiente' && p.vencimiento.startsWith(mes)).reduce((a, p) => a + +p.monto, 0)
   const nPend = proxP.length + proxProg.length
@@ -103,6 +106,25 @@ export default function Dashboard({ goTo }) {
         <div style={{ fontSize: 11, color: T.grisClaro, marginTop: 8 }}>Cuenta lo pagado con cuentas personales de cada miembro. Lo pagado con cuentas del espacio no es aporte.</div>
       </Seccion>}
 
+      {fin.pagos > 0 && <Seccion titulo="Deuda y costo financiero" extra={mesNombre}>
+        <div style={{ marginTop: 6 }}>
+          <Fila titulo="Capital pagado" sub="Baja la deuda; no es gasto" monto={fmtCOP(fin.capital)} montoColor={T.morado} />
+          {fin.interes > 0 && <Fila titulo="Intereses" monto={fmtCOP(fin.interes)} />}
+          {fin.seguro > 0 && <Fila titulo="Seguros" monto={fmtCOP(fin.seguro)} />}
+          {fin.mora > 0 && <Fila titulo="Intereses de mora" monto={fmtCOP(fin.mora)} montoColor={T.rojo} />}
+          {fin.manejo > 0 && <Fila titulo="Cuota de manejo y comisiones" monto={fmtCOP(fin.manejo)} />}
+          {fin.otros > 0 && <Fila titulo="Otros cobros" monto={fmtCOP(fin.otros)} />}
+          {fin.parcial < 0 && <Fila titulo="Pagos parciales" sub="Pagado por debajo de la cuota" monto={fmtCOP(fin.parcial)} montoColor={T.ambar} />}
+          <Fila titulo="Costo financiero del mes" sub={`${fin.pagos} pago${fin.pagos !== 1 ? 's' : ''} de crédito o tarjeta`} monto={fmtCOP(fin.costo)} montoColor={T.rojo} />
+        </div>
+        <div style={{ fontSize: 11, color: T.grisClaro, marginTop: 8 }}>Gasto real del mes sin capital: <b style={{ color: T.tinta }}>{fmtCOP(sal - fin.capital)}</b>. Salió de caja {fmtCOP(sal)}.</div>
+      </Seccion>}
+
+      {etiq.length > 0 && <Seccion titulo="Por etiqueta" extra={mesNombre}>
+        <div style={{ marginTop: 6 }}>{etiq.map(o => <Fila key={o.etiqueta.id} onClick={() => goTo('movimientos', { etiqueta: o.etiqueta.id })} titulo={<Chip e={o.etiqueta} />} sub={`${o.n} movimiento${o.n !== 1 ? 's' : ''}${o.ingresos ? ` · entró ${fmtCOP(o.ingresos)}` : ''}`} monto={fmtCOP(o.salidas)} />)}</div>
+        <div style={{ fontSize: 11, color: T.grisClaro, marginTop: 8 }}>Un movimiento con varias etiquetas cuenta completo en cada una.</div>
+      </Seccion>}
+
       {tcs.length > 0 && <Seccion titulo="Tarjetas" extra={`${tcs.length} factura${tcs.length !== 1 ? 's' : ''}`}>
         <div style={{ marginTop: 6 }}>{tcs.map(r => <Fila key={r.cuenta.id} onClick={() => goTo('deudas')} titulo={r.cuenta.nombre} sub={`${r.activos.length} compra${r.activos.length !== 1 ? 's' : ''} · vence ${fmtDate(r.proximaFecha)}`} monto={fmtCOP(r.proximaFactura)} />)}</div>
       </Seccion>}
@@ -116,7 +138,7 @@ export default function Dashboard({ goTo }) {
       </Seccion>
 
       {byGrupo.length > 0 && <Seccion titulo="Plan vs ejecución"><div style={{ marginTop: 12 }}><BarChartCJ labels={byGrupo.map(x => x.name)} datasets={[{ label: 'Presupuestado', data: byGrupo.map(x => x.p), backgroundColor: '#D9D2EA', borderRadius: 4 }, { label: 'Ejecutado', data: byGrupo.map(x => x.e), backgroundColor: T.morado, borderRadius: 4 }]} height={180} /></div></Seccion>}
-      {topCat.length > 0 && <Seccion titulo={`Gastos de ${mesNombre} por categoría`} style={{ paddingBottom: 8 }}><div style={{ marginTop: 12 }}><PieChartCJ labels={topCat.map(x => x[0])} data={topCat.map(x => x[1])} height={200} /></div></Seccion>}
+      {topCat.length > 0 && <Seccion titulo={`Gastos de ${mesNombre} por categoría`} extra="sin capital de deudas" style={{ paddingBottom: 8 }}><div style={{ marginTop: 12 }}><PieChartCJ labels={topCat.map(x => x[0])} data={topCat.map(x => x[1])} height={200} /></div></Seccion>}
     </div>
   )
 }

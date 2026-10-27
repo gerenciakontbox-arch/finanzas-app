@@ -7,7 +7,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:sql": "test/run-sql.sh",
-    "test:unit": "node test/perfil.test.mjs && node test/extracto.test.mjs",
+    "test:unit": "node test/perfil.test.mjs && node test/extracto.test.mjs && node test/finanzas.test.mjs",
     "test:e2e": "vite build -c test/vite.test.config.js && node test/e2e.mjs",
     "test": "npm run test:unit && npm run test:e2e"
   },
