@@ -403,6 +403,24 @@ await tab('Inicio'); ok('Inicio: los intereses de la tarjeta suman al costo fina
 await page.unroute('**/.netlify/functions/extracto-leer-background')
 await page.screenshot({ path: 'test/shot-extracto-falabella.png', fullPage: true })
 
+// ── Cambiar la cuenta de un movimiento ya registrado (con confirmación y registro) · cuenta de pago al final de la factura ──
+await tab('Config'); await click('button', { hasText: 'Cuentas' }); await fillLabel('Nombre', 'Nequi'); await click('button', { hasText: 'Agregar cuenta' })
+await tab('Deudas'); await page.locator('[data-item="CMR Falabella"] button', { hasText: 'Pagar factura' }).first().click(); await wait(250)
+st = await DB(() => { const labels = [...document.querySelectorAll('label')].map(l => l.textContent); const btn = [...document.querySelectorAll('button')].find(b => /Registrar pago/.test(b.textContent)); const sel = document.querySelector('select[aria-label], label + select'); const cta = [...document.querySelectorAll('label')].find(l => /Desde qué cuenta pagas/.test(l.textContent)); return { idx: labels.findIndex(l => /Desde qué cuenta pagas/.test(l)), n: labels.length, cerca: cta && btn ? btn.getBoundingClientRect().top - cta.getBoundingClientRect().top : 9999 } })
+ok('Factura: la cuenta de pago es el último campo, justo encima del botón', st.idx === st.n - 1 && st.cerca > 0 && st.cerca < 160)
+await page.locator('button[aria-label="Cerrar"]').click(); await wait(150)
+await tab('Movim.')
+await page.locator('button[aria-label^="Cambiar cuenta de Pago factura CMR"]').first().click(); await wait(200)
+ok('Modal de cambio: muestra cuenta actual, pide cuenta, motivo y confirmación', /hoy en Bancolombia Andrés/.test(await T()) && /Confirmo que el dinero realmente salió/.test(await T()) && await page.locator('button', { hasText: 'Cambiar cuenta' }).last().isDisabled())
+await page.locator('select[aria-label="Cuenta correcta"]').selectOption({ label: 'Nequi' }); await fillLabel('¿Por qué cambias la cuenta?', 'Pagué sin revisar el medio de pago')
+ok('Sin confirmar, el botón sigue bloqueado', await page.locator('button', { hasText: 'Cambiar cuenta' }).last().isDisabled())
+await page.locator('input[type=checkbox]').last().check(); await submit('Cambiar cuenta'); await wait(400)
+st = await DB(() => { const T = window.__sb._T; const m = T.movimientos.find(x => x.origen === 'tarjeta' && /CMR Falabella/.test(x.descripcion)); const nq = T.cuentas.find(c => c.nombre === 'Nequi'); const c = T.cambios_cuenta.find(x => x.movimiento_id === m.id); return { ok: m.cuenta_id === nq.id, reg: !!c && c.cuenta_despues === nq.id && /sin revisar/.test(c.motivo), n: T.cambios_cuenta.length } })
+ok('Cuenta cambiada y registrada con motivo (cambios_cuenta)', st.ok && st.reg && st.n === 1)
+ok('La fila muestra el historial del cambio', /Cuenta cambiada el/.test(await T()) && /Bancolombia Andrés → Nequi/.test(await T()))
+await tab('Inicio'); ok('El saldo de Nequi refleja el pago movido', /Nequi/.test(await T()) && /-\s?461\.179/.test(await T()))
+await page.screenshot({ path: 'test/shot-cambio-cuenta.png', fullPage: true })
+
 // Amigo: aislamiento total
 await loginAs('u-amigo', 'amigo@test.co'); await page.fill('input[placeholder="Ej. Andrés"]', 'Amigo'); await click('button', { hasText: 'Guardar' }); await wait(200)
 await tab('Config'); ok('Amigo solo ve su espacio personal', /Mis espacios/.test(await T()) && !/Casa Quijano/.test(await T()) && !/Kontbox/.test(await T()))

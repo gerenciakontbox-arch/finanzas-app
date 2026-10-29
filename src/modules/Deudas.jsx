@@ -346,7 +346,6 @@ function Tarjeta({ r, esDueno, onMover }) {
       {modal === 'factura' && <Modal title={`Pagar factura · ${tc.nombre}`} onClose={() => setModal(null)}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
           <Field label="Fecha de pago"><input type="date" value={form.fecha} onChange={e => sf('fecha', e.target.value)} style={inp} /></Field>
-          <Field label="Cuenta desde la que pagas"><select value={form.cuenta_pago_id || ''} onChange={e => sf('cuenta_pago_id', e.target.value)} style={sel}>{cuentasCaja.map(x => <option key={x.id} value={x.id}>{nombreCuenta(x)}</option>)}</select></Field>
         </div>
         <div style={{ fontWeight: 700, fontSize: 12, color: '#1B1B1F', marginBottom: 6 }}>Cuotas del extracto — ajusta cada valor al del banco</div>
         <div style={{ border: '1px solid #EBE9F1', borderRadius: 12, overflow: 'hidden', marginBottom: 12 }}>
@@ -374,7 +373,9 @@ function Tarjeta({ r, esDueno, onMover }) {
           {(() => { const comp = inclList.filter(c => c.espacio_id !== tc.espacio_id).reduce((a, c) => a + (parseMonto(form.ext?.[c.id]) || 0), 0); return comp > 0 ? <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '3px 0', color: '#138A5B' }}><span>De espacios compartidos (queda como aporte tuyo)</span><b>{fmtCOP(comp)}</b></div> : null })()}
           <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #4B1D9E', marginTop: 6, paddingTop: 8 }}><span style={{ fontWeight: 800, fontSize: 14 }}>TOTAL A PAGAR</span><span style={{ fontWeight: 800, fontSize: 16, color: '#4B1D9E' }}>{fmtCOP(totalPagar)}</span></div>
         </div>
-        <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={() => setModal(null)} /><SaveBtn onClick={saveFactura} disabled={!inclList.length && !extras}>Registrar pago {fmtCOP(totalPagar)}</SaveBtn></div>
+        {/* La cuenta de pago va al final, pegada al botón: es lo último que se mira antes de confirmar */}
+        <div style={{ marginTop: 14, background: T.superficie, borderRadius: 12, padding: '12px 14px' }}><Field label="¿Desde qué cuenta pagas?"><select value={form.cuenta_pago_id || ''} onChange={e => sf('cuenta_pago_id', e.target.value)} style={{ ...sel, backgroundColor: '#fff', fontWeight: 700 }}>{cuentasCaja.map(x => <option key={x.id} value={x.id}>{nombreCuenta(x)}</option>)}</select></Field><div style={{ fontSize: 11, color: T.gris, marginTop: 6 }}>Revísalo antes de registrar: la salida de dinero queda en esta cuenta. Si te equivocas, en Movimientos puedes cambiarla (queda registrado).</div></div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 14 }}><CancelBtn onClick={() => setModal(null)} /><SaveBtn onClick={saveFactura} disabled={!inclList.length && !extras}>Registrar pago {fmtCOP(totalPagar)}</SaveBtn></div>
       </Modal>}
     </div>
   )

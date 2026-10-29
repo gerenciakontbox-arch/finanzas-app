@@ -13,7 +13,7 @@ const SUB = { aporte: ['Aporte a', '#4B1D9E', '#F3F1F8'], recibido: ['Recibido d
 export default function Movimientos({ goTo, inicial }) {
   const { db, insertar, actualizar, borrar, rpc, espacioDe, nombreCuenta, duenoCuenta, nombreMiembro, cuentasDe } = useData(); const ix = useIndices()
   const { espacio, esPersonal, userId, miembros, compartidos } = useAuth()
-  const [modal, setModal] = useState(false); const [filtro, setFiltro] = useState('todos'); const [mes, setMes] = useState(today().slice(0, 7)); const [anticipo, setAnticipo] = useState(false); const [importar, setImportar] = useState(false); const [etiqueta, setEtiqueta] = useState(null); const [etiquetar, setEtiquetar] = useState(null)   // filtro por etiqueta · movimiento al que se le cambian etiquetas
+  const [modal, setModal] = useState(false); const [filtro, setFiltro] = useState('todos'); const [mes, setMes] = useState(today().slice(0, 7)); const [anticipo, setAnticipo] = useState(false); const [importar, setImportar] = useState(false); const [etiqueta, setEtiqueta] = useState(null); const [etiquetar, setEtiquetar] = useState(null); const [cambiarCta, setCambiarCta] = useState(null)   // movimiento al que se le cambia la cuenta   // filtro por etiqueta · movimiento al que se le cambian etiquetas
   const cuentasCaja = db.cuentas.filter(c => c.tipo !== TC)
   const empty = { fecha: today(), tipo: 'Salida', descripcion: '', categoria_id: db.categorias.find(c => c.activa !== false)?.id || null, cuenta_id: cuentasCaja[0]?.id || null, cuenta_destino_id: '', modo_destino: espacio.tipo === 'empresa' ? 'ingreso' : 'devolucion', activo_id: null, presupuesto_id: null, monto: '', deuda_id: '', cuotaN: '', manejo: '', mora: '', seguros: '', otros: '', otrosDetalle: '', aMiembro: false, etiqueta_ids: [] }
   const [form, sf, setForm] = useForm(empty)
@@ -90,11 +90,12 @@ export default function Movimientos({ goTo, inicial }) {
                 {m.programado_id && !m.deuda_id && <div style={{ fontSize: 10, color: '#0F6E8C', marginTop: 3 }}><Icon name="calendar" size={11} style={{ marginRight: 4 }} />Desde programado</div>}
                 {m.motivo && <div style={{ fontSize: 10, color: '#9A5B00', marginTop: 3 }}><Icon name="alert" size={11} style={{ marginRight: 4 }} />{m.motivo}</div>}
                 <ChipsDe ids={m.etiqueta_ids} />
+                {db.cambios_cuenta.filter(c => c.movimiento_id === m.id).map(c => <div key={c.id} style={{ fontSize: 10, color: T.ambar, marginTop: 3 }}><Icon name="refresh" size={11} style={{ marginRight: 4 }} />Cuenta cambiada el {fmtDate(String(c.creado_en).slice(0, 10))}: {ix.cta[c.cuenta_antes] ? nombreCuenta(ix.cta[c.cuenta_antes]) : '—'} → {ix.cta[c.cuenta_despues] ? nombreCuenta(ix.cta[c.cuenta_despues]) : '—'} · {c.motivo}</div>)}
                 <div style={{ fontSize: 11, color: '#9A9AA0', marginTop: 3 }}>{pag ? `Pagó ${pag} · ` : ''}Registró {nombreMiembro(m.creado_por)}</div>
               </div>
               <div style={{ textAlign: 'right', flexShrink: 0 }}><div style={{ fontWeight: 800, fontSize: 15, color: positivo ? '#138A5B' : '#1B1B1F', fontVariantNumeric: 'tabular-nums' }}>{positivo ? '+ ' : m.subtipo === 'traslado' ? '' : '− '}{fmtCOP(m.monto).replace('$ ', '')}</div><div style={{ color: m.tipo === 'Transferencia' ? '#4B1D9E' : '#6E6E73', fontSize: 11, fontWeight: 700, marginTop: 2 }}>{m.tipo === 'Transferencia' ? (m.subtipo === 'traslado' ? 'Traslado' : m.subtipo === 'aporte' ? 'Aporte' : 'Recibido') : m.tipo}</div></div>
             </div>
-            {!m.espejo_de && <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 14, marginTop: 6 }}><button onClick={() => setEtiquetar(m)} aria-label={`Etiquetar ${m.descripcion}`} style={{ background: 'none', border: 'none', color: T.morado, fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="tag" size={12} />Etiquetar</button><button onClick={() => del(m)} style={{ background: 'none', border: 'none', color: '#B42318', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="trash" size={12} />Eliminar</button></div>}
+            {!m.espejo_de && <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 14, marginTop: 6 }}>{m.cuenta_id && <button onClick={() => setCambiarCta(m)} aria-label={`Cambiar cuenta de ${m.descripcion}`} style={{ background: 'none', border: 'none', color: T.gris, fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="refresh" size={12} />Cuenta</button>}<button onClick={() => setEtiquetar(m)} aria-label={`Etiquetar ${m.descripcion}`} style={{ background: 'none', border: 'none', color: T.morado, fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="tag" size={12} />Etiquetar</button><button onClick={() => del(m)} style={{ background: 'none', border: 'none', color: '#B42318', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="trash" size={12} />Eliminar</button></div>}
           </div>) })}
       </div>
 
@@ -142,8 +143,30 @@ export default function Movimientos({ goTo, inicial }) {
         {anticipo && cuotaSel && <MotivoAnticipo cuota={cuotaSel} onClose={() => setAnticipo(false)} onConfirm={m => { setAnticipo(false); save(m) }} />}
       </Modal>}
       {importar && <ImportarMovimientos onClose={() => setImportar(false)} />}
+      {cambiarCta && <CambiarCuenta m={cambiarCta} cuentas={cuentasCaja} onClose={() => setCambiarCta(null)} onSave={async (cuenta, motivo) => { try { await rpc('cambiar_cuenta_movimiento', { p_id: cambiarCta.id, p_cuenta: cuenta, p_motivo: motivo }); setCambiarCta(null) } catch (e) { alert(e.message) } }} />}
       {etiquetar && <EtiquetarMovimiento m={etiquetar} onClose={() => setEtiquetar(null)} onSave={async ids => { try { await actualizar('movimientos', etiquetar.id, { etiqueta_ids: ids }); setEtiquetar(null) } catch (e) { alert(e.message) } }} />}
     </div>
+  )
+}
+
+// Cambiar la cuenta de un movimiento ya registrado (p. ej. pagaste la factura sin revisar el medio de pago).
+// Exige confirmar que el dinero salió de la otra cuenta y un motivo; el cambio queda registrado (cambios_cuenta).
+function CambiarCuenta({ m, cuentas, onClose, onSave }) {
+  const { nombreCuenta } = useData(); const ix = useIndices()
+  const [cuenta, setCuenta] = useState(''); const [motivo, setMotivo] = useState(''); const [seguro, setSeguro] = useState(false)
+  const actual = ix.cta[m.cuenta_id]
+  const opciones = cuentas.filter(c => c.id !== m.cuenta_id && !(m.subtipo === 'traslado' && c.id === m.cuenta_destino_id))
+  return (
+    <Modal title="Cambiar cuenta del movimiento" onClose={onClose}>
+      <div style={{ fontWeight: 700, fontSize: 14, color: T.tinta }}>{m.descripcion}</div><div style={{ fontSize: 12, color: T.gris, marginTop: 2 }}>{fmtDate(m.fecha)} · {fmtCOP(m.monto)} · hoy en <b>{actual ? nombreCuenta(actual) : '—'}</b></div>
+      <div style={{ marginTop: 14 }}><Aviso tipo="warn">Esto corrige de qué cuenta salió (o a cuál entró) el dinero. Cambia el saldo de las dos cuentas{m.espacio_contraparte || !actual?.dueno_id ? '' : ' y, si es un espacio compartido, quién hizo el aporte'}. El cambio queda registrado con fecha y motivo.</Aviso></div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginTop: 14 }}>
+        <Field label="Cuenta correcta"><select value={cuenta} onChange={e => setCuenta(e.target.value)} style={sel} aria-label="Cuenta correcta"><option value="">— Selecciona —</option>{opciones.map(x => <option key={x.id} value={x.id}>{nombreCuenta(x)}</option>)}</select></Field>
+        <Field label="¿Por qué cambias la cuenta?"><input value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Ej. Pagué la factura sin revisar el medio de pago" style={inp} /></Field>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: T.tinta }}><input type="checkbox" checked={seguro} onChange={e => setSeguro(e.target.checked)} style={{ marginTop: 2, accentColor: T.morado }} />Confirmo que el dinero realmente salió de la cuenta que elegí{cuenta && ix.cta[cuenta] ? ` (${nombreCuenta(ix.cta[cuenta])})` : ''}.</label>
+      </div>
+      <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={onClose} /><SaveBtn disabled={!cuenta || !motivo.trim() || !seguro} onClick={() => onSave(cuenta, motivo.trim())}>Cambiar cuenta</SaveBtn></div>
+    </Modal>
   )
 }
 

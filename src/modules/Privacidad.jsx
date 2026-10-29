@@ -116,6 +116,7 @@ const IND = [
   ['tc_uso_pct', 'Uso del cupo de tarjetas', v => `${v} %`],
   ['patrimonio_neto', 'Patrimonio neto', v => fmtCOP(v)],
   ['registro_mismo_dia_pct', 'Gastos anotados el mismo día', v => `${v} %`],
+  ['cambios_cuenta_30d', 'Correcciones de cuenta de pago (30 días)', v => `${v}`],
   ['dias_activos_30', 'Días con actividad (30 días)', v => v],
   ['aportes_mes', 'Aportes a espacios compartidos (mes)', v => fmtCOP(v)],
 ]

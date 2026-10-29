@@ -61,7 +61,8 @@ export const T = { morado: '#4B1D9E', moradoOscuro: '#36146F', tinta: '#1B1B1F',
 
 /* ── Primitivas ── */
 export const inp = { width: '100%', border: '1.5px solid transparent', borderRadius: 12, padding: '11px 12px', fontSize: 15, outline: 'none', boxSizing: 'border-box', background: '#F3F1F8', color: '#1B1B1F', fontFamily: 'inherit' }
-export const sel = { ...inp }
+// appearance:none quita el dibujo nativo del control (iOS lo pintaba con su propio estilo); la lista abierta sigue siendo la del sistema.
+export const sel = { ...inp, WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none', paddingRight: 36, backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236E6E73' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }
 export const PBtn = ({ active, onClick, children }) => (<button onClick={onClick} style={{ padding: '7px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, border: '1.5px solid', cursor: 'pointer', fontFamily: 'inherit', background: active ? '#4B1D9E' : '#FFFFFF', color: active ? '#fff' : '#1B1B1F', borderColor: active ? '#4B1D9E' : '#EBE9F1' }}>{children}</button>)
 export const Badge = ({ val, map }) => { const [, cl] = ((map || {})[val] || '#F3F1F8|#6E6E73').split('|'); return <span style={{ color: cl, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{val}</span> }
 export const Kpi = ({ icon, value, sub, label, color, grad }) => (

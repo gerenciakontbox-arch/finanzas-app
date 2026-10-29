@@ -7,7 +7,7 @@ import { configurarEventos, track } from './eventos'
 import { useAuth } from './auth'
 import { TC } from './util'
 
-const TABLAS = ['categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'ajustes_saldo_deuda', 'etiquetas', 'programado', 'programado_adjuntos', 'movimientos', 'perfil_usuario', 'ofertas', 'senales_def', 'tc_extractos']
+const TABLAS = ['categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'ajustes_saldo_deuda', 'etiquetas', 'programado', 'programado_adjuntos', 'movimientos', 'perfil_usuario', 'ofertas', 'senales_def', 'tc_extractos', 'cambios_cuenta']
 const Ctx = createContext(null)
 export const useData = () => useContext(Ctx)
 
@@ -85,6 +85,7 @@ export function DataProvider({ children }) {
       cuotas_pagadas: all.cuotas_pagadas.filter(x => x.espacio_id === e),
       abonos_capital: (all.abonos_capital || []).filter(x => x.espacio_id === e),
       ajustes_saldo_deuda: (all.ajustes_saldo_deuda || []).filter(x => x.espacio_id === e),
+      cambios_cuenta: (all.cambios_cuenta || []).filter(x => x.espacio_id === e),
       etiquetas: (all.etiquetas || []).filter(x => x.espacio_id === e).sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre)),
       programado: all.programado.filter(x => x.espacio_id === e),
       programado_adjuntos: all.programado_adjuntos.filter(x => x.espacio_id === e),

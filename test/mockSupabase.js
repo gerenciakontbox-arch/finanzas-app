@@ -9,10 +9,10 @@ const CATS = [['Arriendo', 'Fijo'], ['Servicios públicos', 'Fijo'], ['Internet'
 const CATS_EMP = [['Arriendo', 'Fijo'], ['Nómina', 'Fijo'], ['Honorarios', 'Variable'], ['Software y suscripciones', 'Fijo'], ['Impuestos', 'Provisión'], ['Cuota crédito', 'Amortización crédito'], ['Pago tarjeta crédito', 'Amortización crédito'], ['Ventas', 'Variable'], ['Otro', 'Variable']]
 
 export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}) {
-  const T = {}; const tablas = ['app_meta', 'espacios', 'espacio_miembros', 'perfiles', 'categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'ajustes_saldo_deuda', 'etiquetas', 'programado', 'programado_adjuntos', 'movimientos', 'bitacora', 'push_suscripciones', 'consentimientos', 'eventos', 'perfil_usuario', 'ofertas', 'senales_def', 'app_admins', 'accesos_operador', 'tc_extractos', 'tc_lecturas']
+  const T = {}; const tablas = ['app_meta', 'espacios', 'espacio_miembros', 'perfiles', 'categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'ajustes_saldo_deuda', 'etiquetas', 'programado', 'programado_adjuntos', 'movimientos', 'bitacora', 'push_suscripciones', 'consentimientos', 'eventos', 'perfil_usuario', 'ofertas', 'senales_def', 'app_admins', 'accesos_operador', 'tc_extractos', 'tc_lecturas', 'cambios_cuenta']
   tablas.forEach(t => T[t] = [])
-  T.app_meta.push({ clave: 'schema_version', valor: '13' }); T.app_meta.push({ clave: 'politica_version', valor: '2026-10-20' })
-  T.senales_def.push({ codigo: 'creditos_multiples', nombre: 'Varios créditos activos', descripcion: 'Tienes dos o más créditos activos.', servicio: 'Reestructuración y optimización de deuda', activa: true }, { codigo: 'activos_sin_cobertura', nombre: 'Activos sin seguro registrado', descripcion: 'Tienes vehículos o inmuebles sin un seguro programado.', servicio: 'Revisión de coberturas', activa: true })
+  T.app_meta.push({ clave: 'schema_version', valor: '14' }); T.app_meta.push({ clave: 'politica_version', valor: '2026-10-20' })
+  T.senales_def.push({ codigo: 'creditos_multiples', nombre: 'Varios créditos activos', descripcion: 'Tienes dos o más créditos activos.', servicio: 'Reestructuración y optimización de deuda', activa: true }, { codigo: 'cambios_cuenta_frecuentes', nombre: 'Cambios frecuentes de cuenta', descripcion: 'Corregiste la cuenta de pago de tres o más movimientos en los últimos 30 días.', servicio: 'Acompañamiento en el uso de la app', activa: true }, { codigo: 'activos_sin_cobertura', nombre: 'Activos sin seguro registrado', descripcion: 'Tienes vehículos o inmuebles sin un seguro programado.', servicio: 'Revisión de coberturas', activa: true })
   T.app_admins.push({ user_id: 'u-andres', nombre: 'Andrés (operador)' })
   let session = null; const listeners = []
   const me = () => session?.user?.id
@@ -53,6 +53,7 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
     if (t === 'perfil_usuario') return r.user_id === me() && consiente(me(), 'perfil')
     if (t === 'senales_def') return true
     if (t === 'eventos' || t === 'accesos_operador') return false
+    if (t === 'cambios_cuenta') return mine.includes(r.espacio_id)
     if (t === 'espacio_miembros') return mine.includes(r.espacio_id)
     if (t === 'cuentas') return mine.includes(r.espacio_id) || T.cuentas_espacio.some(x => x.cuenta_id === r.id && mine.includes(x.espacio_id))
     if (t === 'cuentas_espacio') return mine.includes(r.espacio_id) || mine.includes(T.cuentas.find(c => c.id === r.cuenta_id)?.espacio_id)
@@ -118,6 +119,7 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
         }); return rows
       }
       if (st.op === 'delete') {
+        if (t === 'cambios_cuenta') return []
         rows = rows.filter(r => !(t === 'movimientos' && r.espejo_de)).filter(r => !(t === 'espacio_miembros' && !(esAdmin(r.espacio_id) && r.user_id !== me()) && !(r.user_id === me() && tipoEsp(r.espacio_id) !== 'personal' && r.rol !== 'admin')))
         rows.forEach(r => { if (t === 'presupuesto' && r.programado_id) throw new Error('Este rubro está programado. Desprográmalo antes de eliminarlo.'); if (t === 'programado') liberarPresupuesto(r); if (t === 'categorias') { if (tipoEsp(r.espacio_id) !== 'personal' && !esAdmin(r.espacio_id)) throw new Error('Solo un administrador del espacio puede modificar las categorías'); if (catEnUso(r.id)) throw new Error(`La categoría "${r.nombre}" ya tiene registros: desactívala en lugar de borrarla`) } cascade(t, r); T[t].splice(T[t].indexOf(r), 1) }); return rows
       }
@@ -239,6 +241,15 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
       m.pagador_id = duenoCuenta(m.cuenta_id); T.movimientos.push(m); sincronizarEspejos(m)
       T.cuotas_pagadas.push({ id: uid(), espacio_id: d.espacio_id, deuda_id: d.id, numero: p_numero, fecha_pago: p_fecha, monto_esperado: p_capital + p_interes + (+p_seguro || 0), monto_pagado: total, capital: p_capital, interes: p_interes, seguro: +p_seguro || 0, movimiento_id: m.id, creado_por: me(), creado_en: now() })
       return m.id
+    },
+    cambiar_cuenta_movimiento: ({ p_id, p_cuenta, p_motivo }) => {
+      const m = T.movimientos.find(x => x.id === p_id && misEspacios().includes(x.espacio_id)); if (!m) throw new Error('Movimiento no encontrado')
+      if (m.espejo_de) throw new Error('Este movimiento es un reflejo: cámbialo desde el espacio donde se registró'); if (!String(p_motivo || '').trim()) throw new Error('Indica por qué cambias la cuenta')
+      if (!p_cuenta || p_cuenta === m.cuenta_id) throw new Error('Elige una cuenta distinta a la actual')
+      const c = T.cuentas.find(x => x.id === p_cuenta); if (!c) throw new Error('Cuenta no encontrada'); if (c.tipo === 'Tarjeta crédito') throw new Error('Una tarjeta de crédito no es una cuenta de pago')
+      if (!(c.espacio_id === m.espacio_id || T.cuentas_espacio.some(x => x.cuenta_id === c.id && x.espacio_id === m.espacio_id))) throw new Error('Esa cuenta no está habilitada en este espacio')
+      const r = { id: uid(), espacio_id: m.espacio_id, movimiento_id: m.id, user_id: me(), cuenta_antes: m.cuenta_id, cuenta_despues: p_cuenta, descripcion: m.descripcion, monto: m.monto, fecha: m.fecha, motivo: String(p_motivo).trim(), creado_en: now() }
+      T.cambios_cuenta.push(r); m.cuenta_id = p_cuenta; m.pagador_id = duenoCuenta(p_cuenta) || null; m.actualizado_en = now(); sincronizarEspejos(m); return r.id
     },
     ajustar_saldo_deuda: ({ p_deuda, p_fecha, p_saldo_real, p_saldo_calculado, p_motivo }) => {
       const d = T.deudas.find(x => x.id === p_deuda && misEspacios().includes(x.espacio_id)); if (!d) throw new Error('Crédito no encontrado')

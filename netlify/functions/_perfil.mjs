@@ -16,8 +16,9 @@ async function datosDe(sb, uid) {
   const { data: espacios } = await sb.from('espacios').select('id,tipo,nombre,dueno_id').in('id', ids)
   const personal = (espacios || []).find(e => e.tipo === 'personal' && e.dueno_id === uid)
   const q = t => sb.from(t).select('*').in('espacio_id', ids)
+  const { data: cambios } = await sb.from('cambios_cuenta').select('creado_en').eq('user_id', uid)
   const [mov, pre, prog, deu, cuo, abo, act, cta, car, cat] = await Promise.all([q('movimientos'), q('presupuesto'), q('programado'), q('deudas'), q('cuotas_pagadas'), q('abonos_capital'), q('activos'), q('cuentas'), q('tc_cargos'), q('categorias')].map(p => p.then(r => r.data || [])))
-  return { uid, ids, espacios, personal, mov, pre, prog, deu, cuo, abo, act, cta, car, cat }
+  return { uid, ids, espacios, personal, mov, pre, prog, deu, cuo, abo, act, cta, car, cat, cambios: cambios || [] }
 }
 
 export function indicadores(d, hoy) {
@@ -71,6 +72,8 @@ export function indicadores(d, hoy) {
     salud, salud_explicacion, puntualidad_pct, atraso_promedio_dias, vencidos, presupuesto_ejecucion_pct, meses_desbordados, ingresos_mes, meses_honorarios: mesesHonorarios,
     carga_deuda_pct, creditos_activos: creditos.length, saldo_creditos: Math.round(saldoCred), tc_uso_pct: cupo > 0 ? pct(saldoTC, cupo) : null, patrimonio_neto, registro_mismo_dia_pct, aportes_mes,
     espacios_hogar: d.espacios.filter(e => e.tipo === 'hogar').length, espacios_empresa: d.espacios.filter(e => e.tipo === 'empresa').length,
+    // correcciones de cuenta de pago en los últimos 30 días: muchas = uso confuso de la app (cuentas o espacios mal entendidos)
+    cambios_cuenta_30d: (d.cambios || []).filter(c => dias(hoy, String(c.creado_en).slice(0, 10)) <= 30).length,
   }
 }
 
@@ -80,6 +83,7 @@ export const SENALES = {
   empresa_activa: (i, d, hoy) => d.espacios.some(e => e.tipo === 'empresa' && d.mov.filter(m => m.espacio_id === e.id && dias(hoy, m.fecha) <= 30).length >= 5),
   creditos_multiples: i => i.creditos_activos >= 2,
   presupuesto_desbordado: i => i.meses_desbordados >= 3,
+  cambios_cuenta_frecuentes: i => i.cambios_cuenta_30d >= 3,
   activos_sin_cobertura: (i, d) => d.act.some(a => ['Vehículo', 'Inmueble'].includes(a.tipo) && !d.prog.some(p => p.activo_id === a.id && p.tipo === 'Seguro')),
 }
 

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useData } from '../lib/data'
 import { useAuth } from '../lib/auth'
 import { Card, Icon, IcoText, Modal, Field, inp, sel, PBtn, SaveBtn, CancelBtn, SmallBtn, Aviso, useForm, T } from '../lib/ui'
-import { fmtCOP, fmtDate, today, TIPOS_CTA, TC, GRUPOS } from '../lib/util'
+import { fmtCOP, fmtDate, today, addDays, TIPOS_CTA, TC, GRUPOS } from '../lib/util'
 import { toCSV, descargar } from '../lib/csv'
 import { TIPO_ICON, TIPO_LABEL } from '../App'
 import { Privacidad } from './Privacidad'
@@ -105,7 +105,7 @@ function TCF({ v, set }) { return (<><Field label="Cupo (COP)"><input type="numb
 function Cuentas() {
   const { db, insertar, actualizar, borrar, rpc, nombreCuenta, saldoCuenta, duenoCuenta } = useData()
   const { espacio, esPersonal, compartidos, userId, nombreDe } = useAuth()
-  const empty = { nombre: '', tipo: 'Bancaria', cupo: '', tasa_mensual: '', banco: '', ultimos4: '', dia_corte: '', saldo_inicial: '', fecha_corte: today() }
+  const empty = { nombre: '', tipo: 'Bancaria', cupo: '', tasa_mensual: '', banco: '', ultimos4: '', dia_corte: '', saldo_inicial: '', fecha_corte: addDays(today(), -1) }   // saldo al CIERRE de esa fecha: por defecto ayer, para que lo de hoy ya cuente
   const [form, sf, setForm] = useForm(empty); const [edit, setEdit] = useState(null)
   const build = f => ({ nombre: f.nombre.trim(), tipo: f.tipo, saldo_inicial: f.tipo === TC ? 0 : (parseFloat(String(f.saldo_inicial).replace(/[^\d.-]/g, '')) || 0), fecha_corte: f.tipo === TC ? null : (f.fecha_corte || null), cupo: f.tipo === TC ? parseFloat(f.cupo) || null : null, tasa_mensual: f.tipo === TC ? parseFloat(f.tasa_mensual) || 0 : null, banco: f.tipo === TC ? f.banco || null : null, ultimos4: f.tipo === TC && /^\d{4}$/.test(f.ultimos4) ? f.ultimos4 : null, dia_corte: f.tipo === TC ? parseInt(f.dia_corte) || null : null })
   const add = async () => { if (!form.nombre.trim()) return; try { await insertar('cuentas', build(form)); setForm(empty) } catch (e) { alert(e.message) } }
@@ -122,7 +122,7 @@ function Cuentas() {
           <Field label="Nombre" full><input value={form.nombre} onChange={e => sf('nombre', e.target.value)} placeholder="Ej. Bancolombia, Visa Bancolombia" style={inp} /></Field>
           <Field label="Tipo"><select value={form.tipo} onChange={e => sf('tipo', e.target.value)} style={sel}>{TIPOS_CTA.map(x => <option key={x}>{x}</option>)}</select></Field>
           {form.tipo === TC && <TCF v={form} set={sf} />}
-          {form.tipo !== TC && <><Field label="Saldo al empezar (COP)"><input type="number" inputMode="numeric" value={form.saldo_inicial} onChange={e => sf('saldo_inicial', e.target.value)} placeholder="0" style={inp} /></Field><Field label="Fecha de corte"><input type="date" value={form.fecha_corte || ''} onChange={e => sf('fecha_corte', e.target.value)} style={inp} /></Field></>}
+          {form.tipo !== TC && <><Field label="Saldo al empezar (COP)"><input type="number" inputMode="numeric" value={form.saldo_inicial} onChange={e => sf('saldo_inicial', e.target.value)} placeholder="0" style={inp} /></Field><Field label="Fecha de corte"><input type="date" value={form.fecha_corte || ''} onChange={e => sf('fecha_corte', e.target.value)} style={inp} /></Field><div style={{ gridColumn: '1/-1', fontSize: 11, color: T.gris, marginTop: -4 }}>El saldo es el del <b>cierre</b> de esa fecha: lo que registres con fecha posterior suma o resta; lo anterior queda como historia.</div></>}
         </div>
         {form.tipo === TC && <div style={{ marginBottom: 10 }}><Aviso tipo="info">La tarjeta aparecerá en Deudas con su panel de compras y pago de factura.</Aviso></div>}
         {form.tipo !== TC && <div style={{ marginBottom: 10 }}><Aviso tipo="info">El saldo de la cuenta será el saldo al empezar más los movimientos posteriores a la fecha de corte. Lo anterior al corte (por ejemplo, un histórico importado) queda como historia y no altera el saldo.</Aviso></div>}

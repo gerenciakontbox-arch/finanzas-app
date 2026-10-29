@@ -42,3 +42,9 @@ ok('señales: honorarios_sin_empresa, creditos_multiples, activos_sin_cobertura'
 d.prog.push({ espacio_id: pid, estado: 'Pendiente', vencimiento: '2027-01-01', tipo: 'Seguro', activo_id: 'a1' })
 ok('con seguro programado la señal de cobertura se apaga', !SENALES.activos_sin_cobertura(i, d, hoy))
 console.log('indicadores:', JSON.stringify(i))
+
+// cambios de cuenta: 3 en 30 días enciende la señal de uso confuso; viejos no cuentan
+const dc = { ...d, cambios: [{ creado_en: '2026-10-18T10:00:00Z' }, { creado_en: '2026-10-19T10:00:00Z' }, { creado_en: '2026-10-20T10:00:00Z' }, { creado_en: '2026-08-01T10:00:00Z' }] }
+const ic = indicadores(dc, hoy)
+ok('cambios_cuenta_30d cuenta solo los recientes (3)', ic.cambios_cuenta_30d === 3)
+ok('señal cambios_cuenta_frecuentes con 3 en 30 días', SENALES.cambios_cuenta_frecuentes(ic, dc, hoy) === true && SENALES.cambios_cuenta_frecuentes(indicadores(d, hoy), d, hoy) === false)
