@@ -115,7 +115,7 @@ export function costoFinanciero(movimientos) {
     if (m.tipo !== 'Salida' || m.espejo_de || !(m.deuda_id || m.tc_cuenta_id)) continue
     const d = m.desglose || {}; const x = m.tc_cuenta_id ? (d.extras || {}) : d
     n++
-    t.capital += +d.capital || 0; t.interes += +d.interes || 0
+    t.capital += +d.capital || 0; t.interes += (+d.interes || 0) + (+x.intereses || 0)
     t.seguro += (+d.seguro || 0) + (+x.seguros || 0); t.mora += +x.mora || 0; t.manejo += +x.cuota_manejo || 0; t.otros += +x.otros || 0
     t.parcial += +x.parcial || 0
   }

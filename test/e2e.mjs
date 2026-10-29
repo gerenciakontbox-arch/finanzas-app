@@ -379,6 +379,30 @@ ok('Rubro de presupuesto con etiqueta', (await page.locator('[data-item="Colegio
 st = await DB(async () => { const T = window.__sb._T; const h = T.espacios.find(e => e.tipo === 'hogar').id; const p = T.presupuesto.find(x => x.concepto === 'Colegio Mateo'); await window.__sb.rpc('mover_item', { p_tabla: 'presupuesto', p_id: p.id, p_destino: h }); const e = T.etiquetas.find(x => x.id === p.etiqueta_ids[0]); return { h: p.espacio_id === h, e: e?.espacio_id === h && e?.nombre === 'Mateo' } })
 ok('Mover rubro etiquetado al hogar: la etiqueta se crea allá con el mismo nombre', st.h && st.e)
 
+// ── Extracto Falabella/CMR: plan según el banco ("4 de 1"), compras sin tasa, intereses como línea de la factura ──
+const FA = { modo: 'texto', estado: { banco: 'Banco Falabella', fecha_corte: '2026-10-14', fecha_limite: '2026-10-31', cupo: 4000000, utilizado: 4014522.44, pago_total: 4014522.44, pago_minimo: 1542890.69, intereses: 68712.5, cuota_manejo: 31990, seguro: 4990, mora: 1739.1, abonos: 692891.45 },
+  compras: [{ fecha: '2024-07-30', descripcion: 'COLCHONES SPRING 247 CCO EM', monto: 992982, moneda_original: 'COP', cuotas: 36, cuota_actual: 27, cuotas_previas: 26, tasa_mensual: 2.118, valor_cuota_mes: 16814.37, saldo_pendiente: 151329.39 }, { fecha: '2026-06-20', descripcion: 'ADIDAS OUTLET CL 5 55 00 LC', monto: 500000, moneda_original: 'COP', cuotas: 1, cuota_actual: 4, cuotas_previas: 0, tasa_mensual: 2.118, valor_cuota_mes: 83333.33, saldo_pendiente: 166666.68 }, { fecha: '2026-10-06', descripcion: 'PAYU PAGOSONLINE CLL 99 14-', monto: 253600, moneda_original: 'COP', cuotas: 1, cuota_actual: 1, cuotas_previas: 0, tasa_mensual: 2.118, valor_cuota_mes: 253600, saldo_pendiente: 0 }],
+  otros: [], advertencias: [] }
+await page.route('**/.netlify/functions/extracto-leer-background', async route => { const b = JSON.parse(route.request().postData()); await page.evaluate(([id, r]) => { const l = window.__sb._T.tc_lecturas.find(x => x.id === id); Object.assign(l, { estado: 'lista', resultado: r }) }, [b.lectura_id, FA]); await route.fulfill({ status: 202, body: '' }) })
+await tab('Config'); await click('button', { hasText: 'Cuentas' })
+await fillLabel('Nombre', 'CMR Falabella'); await selectLabel('Tipo', 'Tarjeta crédito'); await fillLabel('Cupo (COP)', 4000000); await fillLabel('Tasa mensual (%)', 2.1); await fillLabel('Día de corte', 14); await click('button', { hasText: 'Agregar cuenta' })
+await tab('Deudas'); await page.locator('[data-item="CMR Falabella"] button[title="Cargar extracto"]').click(); await wait(200)
+await page.setInputFiles('input[type=file]', { name: 'cmr.pdf', mimeType: 'application/pdf', buffer: PDF_PRUEBA }); await wait(3500)
+ok('Vista previa corrige el plan: "4 de 1" → 6 cuotas y capital financiado de COLCHONES', /por el saldo pendiente son 6 cuotas/.test(await T()) && /capital financiado 605\.317/.test(await T()))
+await submit('Aplicar (3 nuevas, 0 ajustes)'); await wait(600)
+st = await DB(() => { const T = window.__sb._T; const tc = T.cuentas.find(c => c.nombre === 'CMR Falabella'); const cs = T.tc_cargos.filter(c => c.cuenta_id === tc.id); const ad = cs.find(c => /ADIDAS/.test(c.descripcion)), co = cs.find(c => /COLCHONES/.test(c.descripcion)); return { n: cs.length, ad: [ad.cuotas, ad.cuotas_previas, ad.monto, ad.tasa_mensual], co: [co.cuotas, co.cuotas_previas, Math.round(co.monto), co.tasa_mensual] } })
+ok('Compras del extracto: ADIDAS 6 cuotas/3 previas/500.000/sin tasa; COLCHONES 36/26/605.317/sin tasa', st.n === 3 && JSON.stringify(st.ad) === '[6,3,500000,0]' && JSON.stringify(st.co) === '[36,26,605317,0]')
+await page.locator('[data-item="CMR Falabella"] button', { hasText: 'Pagar factura' }).first().click(); await wait(250)
+ok('Factura: cuotas de capital (83.333 + 16.814 + 253.600) e intereses del extracto como línea aparte (68.713)', /83\.333/.test(await T()) && /16\.814/.test(await T()) && (await page.locator('label:has-text("Intereses corrientes")').first().locator('xpath=following-sibling::*[1]').inputValue()) === '68712.5')
+const totalFa = (await T()).match(/TOTAL A PAGAR[^$]*\$ ([\d.]+)/)?.[1]
+ok('Total de la factura = capital de las 3 cuotas (353.747) + intereses + manejo + seguro + mora (107.432) = 461.179', totalFa === '461.179')
+await submit('Registrar pago'); await wait(400)
+st = await DB(() => { const T = window.__sb._T; const m = T.movimientos.find(x => x.origen === 'tarjeta' && /CMR Falabella/.test(x.descripcion)); return { monto: Math.round(+m.monto), int: m.desglose.extras.intereses, cap: Math.round(m.desglose.capital) } })
+ok('Pago registrado: un movimiento por el total (461.179), capital 353.747 e intereses 68.713 en el desglose', Math.abs(st.monto - 461179) <= 1 && st.int === 68713 && st.cap === 353747)
+await tab('Inicio'); ok('Inicio: los intereses de la tarjeta suman al costo financiero', /Intereses/.test(await T()) && /Cuota de manejo y comisiones/.test(await T()))
+await page.unroute('**/.netlify/functions/extracto-leer-background')
+await page.screenshot({ path: 'test/shot-extracto-falabella.png', fullPage: true })
+
 // Amigo: aislamiento total
 await loginAs('u-amigo', 'amigo@test.co'); await page.fill('input[placeholder="Ej. Andrés"]', 'Amigo'); await click('button', { hasText: 'Guardar' }); await wait(200)
 await tab('Config'); ok('Amigo solo ve su espacio personal', /Mis espacios/.test(await T()) && !/Casa Quijano/.test(await T()) && !/Kontbox/.test(await T()))

@@ -9,3 +9,4 @@ esperar test/schema2.test.sql 9
 esperar test/schema3.test.sql 6
 esperar test/schema6.test.sql 7
 esperar test/schema11.test.sql 7
+esperar test/schema12.test.sql 0

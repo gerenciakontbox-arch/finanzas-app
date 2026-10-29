@@ -265,13 +265,13 @@ function Tarjeta({ r, esDueno, onMover }) {
   }
   // Factura
   const ultimoExtracto = db.tc_extractos.filter(x => x.cuenta_id === tc.id).sort((a, b) => b.fecha_corte.localeCompare(a.fecha_corte))[0] || null
-  const openFactura = (ex = ultimoExtracto) => { const incl = {}, ext = {}; rAll.activos.forEach(c => { incl[c.id] = true; ext[c.id] = String(c.next.total) }); setForm({ fecha: today(), cuenta_pago_id: cuentasCaja[0]?.id || null, incl, ext, manejo: ex?.cuota_manejo ? String(ex.cuota_manejo) : '', mora: ex?.mora ? String(ex.mora) : '', seguros: ex?.seguro ? String(ex.seguro) : '', otros: ex?.intereses ? String(ex.intereses) : '', presupuesto_id: '' }); setModal('factura') }
+  const openFactura = (ex = ultimoExtracto) => { const incl = {}, ext = {}; rAll.activos.forEach(c => { incl[c.id] = true; ext[c.id] = String(c.next.total) }); setForm({ fecha: today(), cuenta_pago_id: cuentasCaja[0]?.id || null, incl, ext, manejo: ex?.cuota_manejo ? String(ex.cuota_manejo) : '', mora: ex?.mora ? String(ex.mora) : '', seguros: ex?.seguro ? String(ex.seguro) : '', intereses: ex?.intereses ? String(ex.intereses) : '', otros: '', presupuesto_id: '' }); setModal('factura') }
   const inclList = rAll.activos.filter(c => form.incl?.[c.id]); const esperado = inclList.reduce((a, c) => a + c.next.total, 0); const extracto = inclList.reduce((a, c) => a + (parseMonto(form.ext?.[c.id]) || 0), 0)
-  const fM = parseMonto(form.manejo) || 0, fMo = parseMonto(form.mora) || 0, fS = parseMonto(form.seguros) || 0, fO = parseMonto(form.otros) || 0; const extras = fM + fMo + fS + fO; const totalPagar = extracto + extras; const dif = extracto - esperado
+  const fM = parseMonto(form.manejo) || 0, fMo = parseMonto(form.mora) || 0, fS = parseMonto(form.seguros) || 0, fI = parseMonto(form.intereses) || 0, fO = parseMonto(form.otros) || 0; const extras = fM + fMo + fS + fI + fO; const totalPagar = extracto + extras; const dif = extracto - esperado
   const saveFactura = async () => {
     if (!inclList.length && !extras) return
     const items = inclList.map(c => ({ cargo_id: c.id, descripcion: c.descripcion, n: c.next.n, de: c.cuotas, esperado: c.next.total, pagado: parseMonto(form.ext[c.id]) || 0, capital: c.next.capital, interes: c.next.interes }))
-    try { await rpc('pagar_factura_tc', { p_tc: tc.id, p_fecha: form.fecha, p_cuenta_pago: form.cuenta_pago_id, p_items: items, p_extras: { cuota_manejo: fM, mora: fMo, seguros: fS, otros: fO }, p_presupuesto_id: form.presupuesto_id || null }); setModal(null) } catch (e) { alert(e.message) }
+    try { await rpc('pagar_factura_tc', { p_tc: tc.id, p_fecha: form.fecha, p_cuenta_pago: form.cuenta_pago_id, p_items: items, p_extras: { cuota_manejo: fM, mora: fMo, seguros: fS, intereses: fI, otros: fO }, p_presupuesto_id: form.presupuesto_id || null }); setModal(null) } catch (e) { alert(e.message) }
   }
   const anularCuota = async x => { if (!window.confirm('¿Anular esta cuota? (El movimiento de la factura no se borra)')) return; await borrar('cuotas_pagadas', x.pago.id) }
   const usoPct = r.cupo > 0 ? Math.min(100, Math.round(rAll.saldo / r.cupo * 100)) : 0
@@ -294,7 +294,7 @@ function Tarjeta({ r, esDueno, onMover }) {
       <div style={{ display: 'flex', gap: 8, padding: '12px 14px', borderBottom: open ? '1px solid #EBE9F1' : 'none' }}>
         {esDueno && <button onClick={() => setModal('extracto')} title="Cargar extracto" style={{ width: 40, height: 40, flexShrink: 0, background: '#fff', color: T.morado, border: 'none', borderRadius: 20, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="file" size={18} /></button>}
         <button onClick={() => { setForm(emptyC); setModal('compra') }} style={{ flex: 1, background: '#fff', color: '#1B1B1F', border: 'none', borderRadius: 20, height: 40, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}><IcoText name="cart" size={14}>Registrar compra</IcoText></button>
-        {esPersonal && esDueno ? <button onClick={openFactura} disabled={!rAll.activos.length} style={{ flex: 1, background: rAll.activos.length ? '#4B1D9E' : '#EBE9F1', color: rAll.activos.length ? '#fff' : '#9A9AA0', border: 'none', borderRadius: 20, height: 40, fontWeight: 800, fontSize: 13, fontFamily: 'inherit', cursor: rAll.activos.length ? 'pointer' : 'not-allowed' }}><IcoText name="banknote" size={14}>Pagar factura</IcoText></button> : <div style={{ flex: 1, fontSize: 10, color: '#6E6E73', display: 'flex', alignItems: 'center', padding: '0 6px' }}>{esDueno ? 'La factura se paga desde tu espacio personal.' : `La factura la paga ${nombreMiembro(duenoCuenta(tc))} desde su espacio personal.`}</div>}
+        {esPersonal && esDueno ? <button onClick={() => openFactura()} disabled={!rAll.activos.length} style={{ flex: 1, background: rAll.activos.length ? '#4B1D9E' : '#EBE9F1', color: rAll.activos.length ? '#fff' : '#9A9AA0', border: 'none', borderRadius: 20, height: 40, fontWeight: 800, fontSize: 13, fontFamily: 'inherit', cursor: rAll.activos.length ? 'pointer' : 'not-allowed' }}><IcoText name="banknote" size={14}>Pagar factura</IcoText></button> : <div style={{ flex: 1, fontSize: 10, color: '#6E6E73', display: 'flex', alignItems: 'center', padding: '0 6px' }}>{esDueno ? 'La factura se paga desde tu espacio personal.' : `La factura la paga ${nombreMiembro(duenoCuenta(tc))} desde su espacio personal.`}</div>}
       </div>
       {open && <div style={{ padding: '4px 0 12px' }}>
         <div style={{ padding: '8px 14px 6px', fontWeight: 700, fontSize: 12, color: '#1B1B1F' }}>Compras ({r.cargos.length})</div>
@@ -356,8 +356,10 @@ function Tarjeta({ r, esDueno, onMover }) {
               <div style={{ width: 118 }}><input type="number" inputMode="numeric" value={form.ext?.[c.id] ?? ''} disabled={!on} onChange={e => setForm(f => ({ ...f, ext: { ...f.ext, [c.id]: e.target.value } }))} style={{ ...inp, padding: '7px 8px', fontSize: 13, textAlign: 'right', fontWeight: 700, borderColor: d !== 0 && on ? (d > 0 ? '#F4A79D' : '#7FD6AD') : '#EBE9F1' }} />{on && d !== 0 && <div style={{ fontSize: 9, textAlign: 'right', color: d > 0 ? '#B42318' : '#138A5B', marginTop: 2 }}>{d > 0 ? '+' : ''}{fmtCOP(d)}</div>}</div>
             </div>) })}
         </div>
-        <div style={{ fontWeight: 700, fontSize: 12, color: '#1B1B1F', marginBottom: 6 }}>Cargos adicionales del extracto</div>
+        <div style={{ fontWeight: 700, fontSize: 12, color: '#1B1B1F', marginBottom: 2 }}>Cargos adicionales del extracto</div>
+        <div style={{ fontSize: 11, color: T.gris, marginBottom: 8 }}>Las cuotas de arriba son capital. El banco cobra los intereses aparte: van aquí, no dentro de cada compra.</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+          <Field label="Intereses corrientes"><input type="number" inputMode="numeric" value={form.intereses || ''} onChange={e => sf('intereses', e.target.value)} style={inp} placeholder="0" /></Field>
           <Field label="Cuota de manejo"><input type="number" inputMode="numeric" value={form.manejo} onChange={e => sf('manejo', e.target.value)} style={inp} placeholder="0" /></Field>
           <Field label="Interés de mora"><input type="number" inputMode="numeric" value={form.mora} onChange={e => sf('mora', e.target.value)} style={inp} placeholder="0" /></Field>
           <Field label="Seguros"><input type="number" inputMode="numeric" value={form.seguros} onChange={e => sf('seguros', e.target.value)} style={inp} placeholder="0" /></Field>

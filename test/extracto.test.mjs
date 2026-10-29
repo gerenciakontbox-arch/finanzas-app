@@ -1,6 +1,6 @@
 // Prueba unitaria: normalización de lo que devuelve el modelo (caso Nu y caso Falabella) y conciliación con compras existentes.
 import { normalizar } from '../netlify/functions/extracto-leer-background.mjs'
-import { conciliar, huella } from '../src/lib/extracto.js'
+import { conciliar, huella, planDesdeBanco } from '../src/lib/extracto.js'
 import { tachar } from '../src/lib/tachar.js'
 const ok = (n, c) => { console.log(c ? 'PASS' : 'FAIL', n); if (!c) process.exitCode = 1 }
 
@@ -45,3 +45,27 @@ ok('Mes siguiente: Claude al día (existente, aunque cambie mayúsculas), ChatGP
 // Tachado
 const t = tachar('Andres Felipe Quijano\nCC 1143954712\nCr 36 5b1 04, Cali\n• • • • 1399\nayuda@nu.com.co\n12 SEP 2026 Apple.Com Bill $29.900,00\nADIDAS OUTLET CL 5 55 00 LC', ['Andres Felipe Quijano'])
 ok('Tachado: nombre, cédula, dirección, tarjeta y correo fuera; la compra y el comercio con dirección se conservan', !/Quijano|1143954712|Cr 36|1399|ayuda@/.test(t) && /Apple\.Com Bill \$29\.900,00/.test(t) && /ADIDAS OUTLET CL 5 55 00 LC/.test(t))
+
+// ── Plan según el banco (extracto Falabella de octubre 2026, datos reales) ──
+// "4 de 1" tras un cambio de cuotas: la cuota del mes 83.333,33 y el saldo pendiente 166.666,68 dicen que son 6 cuotas
+const adidas = planDesdeBanco({ monto: 500000, cuotas: 1, cuota_actual: 4, valor_cuota_mes: 83333.33, saldo_pendiente: 166666.68 })
+ok('Falabella "4 de 1": 6 cuotas, 3 previas, capital 500.000, con nota', adidas.cuotas === 6 && adidas.cuotas_previas === 3 && adidas.capital === 500000 && /6 cuotas/.test(adidas.plan_nota))
+// COLCHONES: el extracto imprime 992.982 (con intereses) pero factura 16.814,37 × 36 = 605.317 de capital
+const colch = planDesdeBanco({ monto: 992982, cuotas: 36, cuota_actual: 27, valor_cuota_mes: 16814.37, saldo_pendiente: 151329.39 })
+ok('Falabella: capital financiado = cuota × cuotas (605.317), 36 cuotas, 26 previas', Math.round(colch.capital) === 605317 && colch.cuotas === 36 && colch.cuotas_previas === 26 && /capital financiado/.test(colch.plan_nota))
+// Compra de una cuota: nada cambia
+const payu = planDesdeBanco({ monto: 516800, cuotas: 1, cuota_actual: 1, valor_cuota_mes: 516800, saldo_pendiente: 0 })
+ok('Una cuota: sin cambios ni nota', payu.cuotas === 1 && payu.capital === 516800 && !payu.plan_nota)
+// Nu: la "cuota" que lee el modelo trae interés (4.175,98) → no cuadra con el saldo; monto/cuotas (2.974,07) sí → plan intacto
+const nuC = planDesdeBanco({ monto: 71377.6, cuotas: 24, cuota_actual: 6, valor_cuota_mes: 4175.98, saldo_pendiente: 53533.18 })
+ok('Nu: cuota con interés no engaña al plan (24 cuotas, capital 71.377,6)', nuC.cuotas === 24 && nuC.capital === 71377.6 && !nuC.plan_nota)
+// Sin saldo pendiente no se infiere nada
+const sinDato = planDesdeBanco({ monto: 100000, cuotas: 3, cuota_actual: 2 })
+ok('Sin saldo pendiente: se respeta lo impreso', sinDato.cuotas === 3 && sinDato.capital === 100000)
+// Conciliación: la compra ya existe con tasa y 1 cuota (cargada antes de la corrección) → ajuste de plazo, capital y tasa
+const ajusteAd = conciliar([{ fecha: '2026-06-20', descripcion: 'ADIDAS OUTLET CL 5 55 00 LC', monto: 500000, cuotas: 1, cuota_actual: 4, valor_cuota_mes: 83333.33, saldo_pendiente: 166666.68 }], [{ id: 'x', fecha: '2026-06-20', descripcion: 'ADIDAS OUTLET CL 5 55 00 LC', monto: 500000, cuotas: 1, cuotas_previas: 0, tasa_mensual: 2.088, ref_extracto: huella({ fecha: '2026-06-20', descripcion: 'ADIDAS OUTLET CL 5 55 00 LC', monto: 500000 }) }], {})[0]
+ok('Recargar el extracto corrige la compra mal cargada: ajuste a 6 cuotas, 3 previas, sin tasa', ajusteAd.estado === 'ajuste' && ajusteAd.cuotas === 6 && ajusteAd.nuevasPrevias === 3 && ajusteAd.incluir)
+// Suma de cuotas del mes con el plan corregido = consumos facturados del banco (1.435.459,09), sin ADIDAS a 500.000
+const filas = [[992982,36,27,16814.37,151329.39],[730000,36,25,20277.78,223055.58],[1004000,36,25,27888.89,306777.79],[336078,6,5,56013,56013],[713940,8,5,89242.5,267727.5],[307723.01,24,5,12821.79,243614.06],[274407,5,5,54881.4,0],[500000,1,4,83333.33,166666.68],[138626,4,4,34656.5,0],[342497.64,24,4,14270.73,285414.72],[231290.41,24,4,9637.10,192742.01],[326860.02,24,3,13619.16,286002.54],[318860.16,24,2,13285.84,292288.48],[28600,1,1,28600,0],[516800,1,1,516800,0],[4760,1,1,4760,0],[33400,1,1,33400,0],[253600,1,1,253600,0],[18786.75,1,1,18786.75,0],[45595.95,1,1,45595.95,0],[87174,1,1,87174,0]]
+const suma = filas.map(([monto, cuotas, cuota_actual, valor_cuota_mes, saldo_pendiente]) => planDesdeBanco({ monto, cuotas, cuota_actual, valor_cuota_mes, saldo_pendiente })).reduce((a, c) => a + c.capital / c.cuotas, 0)
+ok('Extracto Falabella completo: Σ capital/cuotas = 1.435.459 (consumos facturados del banco)', Math.abs(suma - 1435459.09) < 2)

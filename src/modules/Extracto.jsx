@@ -60,8 +60,9 @@ export default function ImportarExtracto({ tc, r, saldoApp, onClose }) {
   const confirmar = async () => {
     setBusy('Guardando…'); setErr('')
     try {
-      if (nuevas.length) await insertarVarios('tc_cargos', nuevas.map(c => ({ cuenta_id: tc.id, fecha: c.fecha, descripcion: c.descripcion, monto: c.monto, cuotas: c.cuotas, cuotas_previas: c.cuotas_previas, tasa_mensual: c.tasa_mensual ?? (+tc.tasa_mensual || 0), categoria_id: catDefault, primera_cuota: primeraCuota(c), ref_extracto: c.ref })))
-      for (const a of ajustes) await actualizar('tc_cargos', a.cargo.id, { cuotas: a.cuotas, cuotas_previas: a.nuevasPrevias, ref_extracto: a.ref })
+      // Compras del extracto: capital financiado, cuotas según el saldo pendiente y SIN tasa (el banco cobra el interés aparte y entra como línea de la factura)
+      if (nuevas.length) await insertarVarios('tc_cargos', nuevas.map(c => ({ cuenta_id: tc.id, fecha: c.fecha, descripcion: c.descripcion, monto: c.capital ?? c.monto, cuotas: c.cuotas, cuotas_previas: c.cuotas_previas, tasa_mensual: 0, categoria_id: catDefault, primera_cuota: primeraCuota(c), ref_extracto: c.ref })))
+      for (const a of ajustes) await actualizar('tc_cargos', a.cargo.id, { cuotas: a.cuotas, cuotas_previas: a.nuevasPrevias, monto: a.capital ?? a.monto, tasa_mensual: 0, ref_extracto: a.ref })
       const e = lectura.estado
       if (e.fecha_corte) {
         const prev = db.tc_extractos.find(x => x.cuenta_id === tc.id && x.fecha_corte === e.fecha_corte)
@@ -111,8 +112,9 @@ export default function ImportarExtracto({ tc, r, saldoApp, onClose }) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.descripcion}</div>
               <div style={{ fontSize: 10, color: T.gris }}>{fmtDate(f.fecha)} · cuota {f.cuota_actual} de {f.cuotas}{f.tasa_mensual != null ? ` · ${f.tasa_mensual}% m.v.` : ''}{f.moneda_original && f.moneda_original !== 'COP' ? ` · ${f.monto_original} ${f.moneda_original}` : ''}</div>
+              {f.plan_nota && <div style={{ fontSize: 10, color: T.ambar, fontWeight: 700 }}>Plan corregido: {f.plan_nota}</div>}
               {f.estado === 'nueva' && <div style={{ fontSize: 10, color: T.verde, fontWeight: 700 }}>Nueva{f.cuotas_previas ? ` · ${f.cuotas_previas} cuota${f.cuotas_previas > 1 ? 's' : ''} ya pagada${f.cuotas_previas > 1 ? 's' : ''} antes de la app` : ''}</div>}
-              {f.estado === 'ajuste' && <div style={{ fontSize: 10, color: T.ambar, fontWeight: 700 }}>Ya existe: la app tiene {f.pagadasApp} cuota{f.pagadasApp === 1 ? '' : 's'} pagada{f.pagadasApp === 1 ? '' : 's'} y el banco {f.deberian}{(+f.cargo.cuotas || 1) !== f.cuotas ? ` · plazo ${f.cargo.cuotas} → ${f.cuotas}` : ''}. Marca para ajustar.</div>}
+              {f.estado === 'ajuste' && <div style={{ fontSize: 10, color: T.ambar, fontWeight: 700 }}>Ya existe: {f.deberian !== f.pagadasApp ? `la app tiene ${f.pagadasApp} cuota${f.pagadasApp === 1 ? '' : 's'} pagada${f.pagadasApp === 1 ? '' : 's'} y el banco ${f.deberian}` : 'cuotas al día'}{(+f.cargo.cuotas || 1) !== f.cuotas ? ` · plazo ${f.cargo.cuotas} → ${f.cuotas}` : ''}{Math.abs(+f.cargo.monto - f.capital) > 1 ? ` · capital ${fmtCOP(f.cargo.monto)} → ${fmtCOP(f.capital)}` : ''}{+f.cargo.tasa_mensual > 0 ? ' · se quita la tasa (el interés va aparte en la factura)' : ''}. Marca para ajustar.</div>}
               {f.estado === 'existente' && <div style={{ fontSize: 10, color: T.gris }}>Ya registrada y al día</div>}
               {f.nota && <div style={{ fontSize: 10, color: T.ambar }}>· {f.nota}</div>}
             </div>
