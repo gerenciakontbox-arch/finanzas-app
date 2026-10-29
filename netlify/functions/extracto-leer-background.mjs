@@ -10,7 +10,7 @@ import { tachar } from './_pdf.mjs'
 const MODELO = () => env('ANTHROPIC_MODEL') || 'claude-sonnet-5-5'
 
 const SISTEMA = `Eres un extractor de datos de extractos de tarjeta de crédito de bancos colombianos (Nu, Bancolombia, Davivienda, Banco Falabella/CMR, BBVA, Rappi, Lulo, Scotiabank Colpatria, Banco de Bogotá, Itaú, etc.).
-Devuelves SOLO un objeto JSON válido, sin comentarios ni texto alrededor, con esta forma exacta:
+Entregas el resultado SIEMPRE llamando a la herramienta "extracto" (nunca como texto). Su forma exacta:
 {
  "banco": "texto corto o null",
  "periodo_inicio": "AAAA-MM-DD o null", "periodo_fin": "AAAA-MM-DD o null",
@@ -90,7 +90,7 @@ export default async (req) => {
   const limpio = tachar(String(texto).slice(0, 120000), [user.email?.split('@')[0], ...nombres])
   try {
     const cliente = new Anthropic({ apiKey: env('ANTHROPIC_API_KEY') })
-    const r = await cliente.messages.create({ model: MODELO(), max_tokens: 16000, system: SISTEMA, tools: [HERRAMIENTA], tool_choice: { type: 'tool', name: 'extracto' }, messages: [{ role: 'user', content: [{ type: 'text', text: 'Extracto (texto extraído del PDF, identificadores tachados):\n\n' + limpio }] }] })
+    const r = await cliente.messages.create({ model: MODELO(), max_tokens: 16000, system: SISTEMA, tools: [HERRAMIENTA], tool_choice: { type: 'auto' }, messages: [{ role: 'user', content: [{ type: 'text', text: 'Extracto (texto extraído del PDF, identificadores tachados):\n\n' + limpio }] }] })
     if (r.stop_reason === 'max_tokens') throw new Error('El extracto es demasiado largo para leerlo de una vez. Si trae varias tarjetas o meses, cárgalo por partes.')
     const uso = r.content.find(c => c.type === 'tool_use' && c.name === 'extracto')
     const raw = uso ? uso.input : extraerJson(r.content.filter(c => c.type === 'text').map(c => c.text).join('\n'))
