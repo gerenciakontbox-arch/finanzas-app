@@ -1,5 +1,5 @@
 // Prueba unitaria: normalización de lo que devuelve el modelo (caso Nu y caso Falabella) y conciliación con compras existentes.
-import { normalizar } from '../netlify/functions/extracto-leer-background.mjs'
+import { normalizar, extraerJson } from '../netlify/functions/extracto-leer-background.mjs'
 import { conciliar, huella, planDesdeBanco } from '../src/lib/extracto.js'
 import { tachar } from '../src/lib/tachar.js'
 const ok = (n, c) => { console.log(c ? 'PASS' : 'FAIL', n); if (!c) process.exitCode = 1 }
@@ -69,3 +69,13 @@ ok('Recargar el extracto corrige la compra mal cargada: ajuste a 6 cuotas, 3 pre
 const filas = [[992982,36,27,16814.37,151329.39],[730000,36,25,20277.78,223055.58],[1004000,36,25,27888.89,306777.79],[336078,6,5,56013,56013],[713940,8,5,89242.5,267727.5],[307723.01,24,5,12821.79,243614.06],[274407,5,5,54881.4,0],[500000,1,4,83333.33,166666.68],[138626,4,4,34656.5,0],[342497.64,24,4,14270.73,285414.72],[231290.41,24,4,9637.10,192742.01],[326860.02,24,3,13619.16,286002.54],[318860.16,24,2,13285.84,292288.48],[28600,1,1,28600,0],[516800,1,1,516800,0],[4760,1,1,4760,0],[33400,1,1,33400,0],[253600,1,1,253600,0],[18786.75,1,1,18786.75,0],[45595.95,1,1,45595.95,0],[87174,1,1,87174,0]]
 const suma = filas.map(([monto, cuotas, cuota_actual, valor_cuota_mes, saldo_pendiente]) => planDesdeBanco({ monto, cuotas, cuota_actual, valor_cuota_mes, saldo_pendiente })).reduce((a, c) => a + c.capital / c.cuotas, 0)
 ok('Extracto Falabella completo: Σ capital/cuotas = 1.435.459 (consumos facturados del banco)', Math.abs(suma - 1435459.09) < 2)
+
+// ── Respaldo de parseo: JSON con comentarios, comas finales, "..." y números con formato colombiano ──
+const roto = 'Aquí va: {"banco":"Nu", // comentario\n "compras":[ {"fecha":"2026-01-01","descripcion":"a","monto_cop": 1.004.000,00, "cuotas_total": 3,}, {"fecha":"2026-01-02","descripcion":"b","monto_cop": 500}\n ...\n ], "otros":[], "advertencias":[],}'
+const rep = extraerJson(roto)
+ok('extraerJson repara comentarios, comas finales, "..." y 1.004.000,00', rep.compras.length === 2 && rep.compras[0].monto_cop === 1004000 && rep.banco === 'Nu')
+let irreparable = false; try { extraerJson('{"compras":[ {"a":1} {"b":2 ]}') } catch (e) { irreparable = /mal formados/.test(e.message) }
+ok('extraerJson: lo irreparable da un error claro', irreparable)
+// "4 de 1" llega tal cual a normalizar: cuota_actual 4 se conserva para que planDesdeBanco lo corrija
+const inc = normalizar({ compras: [{ fecha: '2026-06-20', descripcion: 'ADIDAS', monto_cop: 500000, cuotas_total: 1, cuota_actual: 4, valor_cuota_mes: 83333.33, saldo_pendiente: 166666.68 }] })
+ok('normalizar conserva "4 de 1" (cuota_actual 4, previas 0) y conciliar lo vuelve 6 cuotas', inc.compras[0].cuota_actual === 4 && inc.compras[0].cuotas_previas === 0 && conciliar(inc.compras, [], {})[0].cuotas === 6)
