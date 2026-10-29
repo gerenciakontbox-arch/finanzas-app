@@ -17,14 +17,14 @@ App de finanzas personales/hogar/empresa. React + Vite (PWA) · Supabase (Postgr
 - `src/modules/` una pantalla por archivo; `Privacidad.jsx` (autorizaciones, derechos, Mi perfil, ofertas, operador); `MoverA.jsx` (mover ítems entre espacios); `Etiquetas.jsx` (chips, selector y administración de etiquetas); en `Deudas.jsx` viven `PagoCuota` (valor real) y `AjustarSaldo`.
 - `src/legal/politica.js` política y finalidades.
 - `netlify/functions/` `avisos-diarios` (push 12:00 UTC), `aviso-prueba`, `perfil-diario` (06:00 UTC), `perfil-ahora`, `extracto-leer-background` (texto del extracto → JSON con Anthropic, en segundo plano vía `tc_lecturas`; el PDF se lee en el dispositivo con `src/lib/pdfTexto.js` y se tacha con `src/lib/tachar.js`), `_push.mjs`, `_perfil.mjs` (indicadores y `SENALES`).
-- `supabase/migrations/` 0001 base → 0014. `supabase/email-magic-link.html` plantilla del código OTP (`{{ .Token }}`).
+- `supabase/migrations/` 0001 base → 0015. `supabase/email-magic-link.html` plantilla del código OTP (`{{ .Token }}`).
 - `test/` `run-sql.sh`, `schema*.test.sql`, `mockSupabase.js`, `e2e.mjs`, `perfil.test.mjs`, `extracto.test.mjs`, `finanzas.test.mjs` (remedición, costo financiero, etiquetas), capturas `shot-*.png`.
 
 ## Comandos
 ```
 npm run build                      # producción
 npm run test:unit                  # perfil, extracto, finanzas
-npm run test:e2e                   # build de prueba + Playwright (125 verificaciones)
+npm run test:e2e                   # build de prueba + Playwright (128 verificaciones)
 PGHOST=... PGPORT=... PGUSER=postgres npm run test:sql   # Postgres 16; crea la base fintest2
 ```
 Postgres local de este entorno: `su pguser -c "/usr/lib/postgresql/16/bin/pg_ctl -D /home/pguser/pg/data -l /home/pguser/pg/log start -o '-p 5499 -k /tmp'"` y `PGHOST=/tmp PGPORT=5499`. Chromium: en este entorno `CHROME_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npm run test:e2e` (en CI Playwright instala el suyo).
@@ -36,6 +36,7 @@ Postgres local de este entorno: `su pguser -c "/usr/lib/postgresql/16/bin/pg_ctl
 - **`select`**: `sel` en `ui.jsx` lleva `appearance: none` + chevron propio. iOS pinta los `<select>` con su estilo nativo si no se quita; la lista desplegada siempre es la del sistema (es lo accesible y lo esperado en móvil).
 - **Presupuesto → Programado**: `programar_presupuesto` crea la serie; el rubro queda bloqueado (trigger `presupuesto_guardia`) y se cierra al pagar desde Programado, que vincula o crea el rubro del mes siguiente (`auto_creado`).
 - **Créditos**: sistema `fija`/`capital`, `seguro_mensual`, `cuotas_previas`, abonos a capital (`abonos_capital`, modo plazo/cuota), pago anticipado (> 5 días) exige motivo.
+- **Borrar el movimiento de un pago** (factura de tarjeta o cuota de crédito) borra sus `cuotas_pagadas` y abonos (triggers `movimientos_cuotas_borradas`, `movimientos_abono_borrado`): las cuotas vuelven a pendientes. Nunca dejar cuotas "pagadas" sin movimiento.
 - **Pago de cuota con valor real** (`pagar_cuota_credito`): UN movimiento de caja por lo pagado; el `desglose` lleva capital/interés/seguro + extras (`mora`, `seguros`, `cuota_manejo`, `otros` con `otros_detalle` obligatorio) o `parcial` (negativo, exige motivo). Los informes leen el desglose (`costoFinanciero`, `gastosPorCategoria` en `finanzas.js`): el capital baja la deuda y no es gasto; lo demás es costo financiero.
 - **Saldo real según extracto** (`ajustes_saldo_deuda`, RPC `ajustar_saldo_deuda`): no toca caja; `amortizacion({ajustes})` remide desde la cuota siguiente manteniendo las cuotas restantes. Un ajuste por punto de la tabla (se reemplaza). Se usa al crear (saldo de apertura) y después.
 - **Etiquetas** (`etiquetas` por espacio, nombres libres, únicas sin mayúsculas; `etiqueta_ids uuid[]` en movimientos/presupuesto/programado): sin reparto de montos. Trigger `_etiquetas_guardia` deduplica, descarta inexistentes, hereda las del programado y al cambiar de espacio las traduce por nombre (`_etiqueta_equivalente`). Borrar una etiqueta la retira de los ítems. El CSV de movimientos mapea `tags` a etiquetas.

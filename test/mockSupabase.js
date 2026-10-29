@@ -11,7 +11,7 @@ const CATS_EMP = [['Arriendo', 'Fijo'], ['Nómina', 'Fijo'], ['Honorarios', 'Var
 export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}) {
   const T = {}; const tablas = ['app_meta', 'espacios', 'espacio_miembros', 'perfiles', 'categorias', 'cuentas', 'cuentas_espacio', 'activos', 'presupuesto', 'deudas', 'tc_cargos', 'cuotas_pagadas', 'abonos_capital', 'ajustes_saldo_deuda', 'etiquetas', 'programado', 'programado_adjuntos', 'movimientos', 'bitacora', 'push_suscripciones', 'consentimientos', 'eventos', 'perfil_usuario', 'ofertas', 'senales_def', 'app_admins', 'accesos_operador', 'tc_extractos', 'tc_lecturas', 'cambios_cuenta']
   tablas.forEach(t => T[t] = [])
-  T.app_meta.push({ clave: 'schema_version', valor: '14' }); T.app_meta.push({ clave: 'politica_version', valor: '2026-10-20' })
+  T.app_meta.push({ clave: 'schema_version', valor: '15' }); T.app_meta.push({ clave: 'politica_version', valor: '2026-10-20' })
   T.senales_def.push({ codigo: 'creditos_multiples', nombre: 'Varios créditos activos', descripcion: 'Tienes dos o más créditos activos.', servicio: 'Reestructuración y optimización de deuda', activa: true }, { codigo: 'cambios_cuenta_frecuentes', nombre: 'Cambios frecuentes de cuenta', descripcion: 'Corregiste la cuenta de pago de tres o más movimientos en los últimos 30 días.', servicio: 'Acompañamiento en el uso de la app', activa: true }, { codigo: 'activos_sin_cobertura', nombre: 'Activos sin seguro registrado', descripcion: 'Tienes vehículos o inmuebles sin un seguro programado.', servicio: 'Revisión de coberturas', activa: true })
   T.app_admins.push({ user_id: 'u-andres', nombre: 'Andrés (operador)' })
   let session = null; const listeners = []
@@ -76,7 +76,7 @@ export function crearMock({ userId = 'u-andres', email = 'andres@test.co' } = {}
     if (t === 'tc_cargos') T.cuotas_pagadas = T.cuotas_pagadas.filter(c => c.cargo_id !== r.id)
     if (t === 'deudas') { T.cuotas_pagadas = T.cuotas_pagadas.filter(c => c.deuda_id !== r.id); T.abonos_capital = T.abonos_capital.filter(a => a.deuda_id !== r.id); T.ajustes_saldo_deuda = T.ajustes_saldo_deuda.filter(a => a.deuda_id !== r.id) }
     if (t === 'etiquetas') for (const tb of ['movimientos', 'presupuesto', 'programado']) T[tb].forEach(x => { if ((x.etiqueta_ids || []).includes(r.id)) x.etiqueta_ids = x.etiqueta_ids.filter(i => i !== r.id) })
-    if (t === 'movimientos') { T.cuotas_pagadas.forEach(c => { if (c.movimiento_id === r.id) c.movimiento_id = null }); T.abonos_capital = T.abonos_capital.filter(a => a.movimiento_id !== r.id); T.movimientos = T.movimientos.filter(x => x.espejo_de !== r.id) }
+    if (t === 'movimientos') { T.cuotas_pagadas = T.cuotas_pagadas.filter(c => c.movimiento_id !== r.id); /* 0015: borrar el pago libera sus cuotas */ T.abonos_capital = T.abonos_capital.filter(a => a.movimiento_id !== r.id); T.movimientos = T.movimientos.filter(x => x.espejo_de !== r.id) }
     if (t === 'programado') T.programado_adjuntos = T.programado_adjuntos.filter(a => a.programado_id !== r.id)
     if (t === 'espacio_miembros') { }
   }

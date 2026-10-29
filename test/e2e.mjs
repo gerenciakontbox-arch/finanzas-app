@@ -421,6 +421,14 @@ ok('La fila muestra el historial del cambio', /Cuenta cambiada el/.test(await T(
 await tab('Inicio'); ok('El saldo de Nequi refleja el pago movido', /Nequi/.test(await T()) && /-\s?461\.179/.test(await T()))
 await page.screenshot({ path: 'test/shot-cambio-cuenta.png', fullPage: true })
 
+// ── Borrar el movimiento de un pago libera las cuotas (0015) ──
+await tab('Movim.'); st = await DB(() => { const T = window.__sb._T; const tc = T.cuentas.find(c => c.nombre === 'CMR Falabella'); return T.cuotas_pagadas.filter(c => T.tc_cargos.find(x => x.id === c.cargo_id)?.cuenta_id === tc.id).length })
+ok('Antes de borrar: 3 cuotas de la factura CMR marcadas como pagadas', st === 3)
+await page.locator('button[aria-label^="Eliminar Pago factura CMR Falabella"]').first().click(); await wait(500)
+st = await DB(() => { const T = window.__sb._T; const tc = T.cuentas.find(c => c.nombre === 'CMR Falabella'); return { cuotas: T.cuotas_pagadas.filter(c => T.tc_cargos.find(x => x.id === c.cargo_id)?.cuenta_id === tc.id).length, mov: T.movimientos.filter(m => m.origen === 'tarjeta' && /CMR Falabella/.test(m.descripcion)).length } })
+ok('Al borrar el pago, las cuotas vuelven a pendientes y la próxima factura recupera su valor', st.cuotas === 0 && st.mov === 0)
+await tab('Deudas'); ok('Deudas: la factura CMR vuelve a mostrar las 3 cuotas por pagar', /CMR Falabella/.test(await T()) && /3 compras activas/.test(await T()))
+
 // Amigo: aislamiento total
 await loginAs('u-amigo', 'amigo@test.co'); await page.fill('input[placeholder="Ej. Andrés"]', 'Amigo'); await click('button', { hasText: 'Guardar' }); await wait(200)
 await tab('Config'); ok('Amigo solo ve su espacio personal', /Mis espacios/.test(await T()) && !/Casa Quijano/.test(await T()) && !/Kontbox/.test(await T()))

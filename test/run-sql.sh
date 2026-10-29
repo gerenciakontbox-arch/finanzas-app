@@ -12,3 +12,4 @@ esperar test/schema11.test.sql 7
 esperar test/schema12.test.sql 0
 esperar test/schema13.test.sql 0
 esperar test/schema14.test.sql 5
+esperar test/schema15.test.sql 0
