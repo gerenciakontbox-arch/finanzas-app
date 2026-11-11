@@ -14,6 +14,7 @@ page.on('pageerror', e => console.log('PAGEERROR', e.message)); page.on('console
 page.on('dialog', d => d.accept())
 const T = () => page.evaluate(() => document.body.innerText)
 const DB = fn => page.evaluate(fn)
+const isoLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`   // misma fecha local que today() en la app
 const wait = ms => page.waitForTimeout(ms)
 const NAV = { 'Inicio': ['Inicio'], 'Movim.': ['Movimientos'], 'Deudas': ['Deudas'], 'Presup.': ['Plan', 'Presupuesto'], 'Progr.': ['Plan', 'Programado'], 'Activos': ['Activos'], 'Config': ['Ajustes'] }
 const tab = async l => { const [n, seg] = NAV[l] || [l]; await page.locator('nav button', { hasText: new RegExp('^' + n + '$') }).click(); await wait(150); if (seg) { await page.locator('[role=tab]', { hasText: seg }).click(); await wait(200) } }
@@ -24,7 +25,7 @@ const selectLabel = async (label, v) => { const el = page.locator(`label:has-tex
 const plusBtn = async () => { await page.locator('div:has(> button[title="Importar CSV"]) > button').last().click(); await wait(150) }
 const cambiarEspacio = async nombre => { await page.locator('button[aria-label="Cambiar de espacio"]').click(); await wait(100); await page.locator('[data-menu="espacios"] button', { hasText: nombre }).first().click(); await wait(400) }
 const aceptarPolitica = async (opts = {}) => { if (!/Tus datos, tus reglas/.test(await T())) return false; if (opts.comercial) await page.locator('[role=switch]').nth(3).click(); if (opts.sinAnalitica) await page.locator('[role=switch]').nth(1).click(); await submit('Aceptar y continuar'); await wait(400); return true }
-const loginAs = async (uid, mail, opts) => { await DB(() => window.__sb._logout()); await wait(200); await page.evaluate(([u, m]) => window.__sb._login(u, m), [uid, mail]); await wait(500); await aceptarPolitica(opts) }
+const loginAs = async (uid, mail, opts) => { await DB(() => window.__sb._logout()); await wait(200); await page.evaluate(([u, m]) => window.__sb._login(u, m), [uid, mail]); await wait(500); await aceptarPolitica(opts); if (!opts?.guiado) { await DB(() => window.__sb.auth.updateUser({ data: { modo_completo: true } })); await wait(200) } }
 
 await page.goto('http://localhost:4177/'); await wait(400)
 ok('Pantalla de login (Akontapp)', /Enviarme el código por correo/.test(await T()) && /Akontapp/.test(await T()))
@@ -36,6 +37,9 @@ await page.fill('input[inputmode=numeric]', '123456'); await click('button', { h
 ok('Primer ingreso: pantalla de autorizaciones (4 finalidades, servicio obligatoria)', /Tus datos, tus reglas/.test(await T()) && (await page.locator('[role=switch]').count()) === 4 && /necesaria/.test(await T()))
 await page.screenshot({ path: 'test/shot-autorizaciones.png' }); await page.locator('button', { hasText: 'Leer la política completa' }).click(); await wait(150); ok('Política completa visible (Ley 1581, responsable, derechos)', /Ley 1581 de 2012/.test(await T()) && /KONTBOX S.A.S./.test(await T())); await page.locator('button[aria-label="Cerrar"]').click(); await wait(150)
 await aceptarPolitica({ comercial: true })
+const modoCompleto = async () => { await DB(() => window.__sb.auth.updateUser({ data: { modo_completo: true } })); await wait(200) }
+ok('Arranque: usuario nuevo ve solo Inicio, Plan y Ajustes, con su primer paso', (await page.locator('nav button').count()) === 3 && /Anota lo que pagas todos los meses/.test(await T()))
+await modoCompleto(); ok('Modo completo: las 6 secciones', (await page.locator('nav button').count()) === 6)
 const cons0 = await DB(() => window.__sb._T.consentimientos.filter(c => c.user_id === 'u-andres').map(c => c.finalidad + ':' + c.aceptado).sort())
 ok('Autorizaciones registradas con versión de política', JSON.stringify(cons0) === JSON.stringify(['analitica:true', 'comercial:true', 'perfil:true', 'servicio:true']))
 ok('Entra directo al espacio personal (sin onboarding) y pide el nombre', /Espacio personal/.test(await T()) && /¿Cómo te llamas\?/.test(await T()) && /Anotar gasto/.test(await T()))
@@ -155,7 +159,7 @@ await cambiarEspacio('Casa Quijano'); await tab('Deudas'); await page.screenshot
 // ===== Lote 3 · créditos: cuota decreciente con seguro, anticipo con motivo, abono a capital =====
 await cambiarEspacio('Personal'); await tab('Deudas'); await click('button', { hasText: 'Nuevo' })
 await fillLabel('Nombre', 'Crédito libre'); await selectLabel('Sistema de cuota', 'Abono fijo a capital (cuota decreciente)'); await fillLabel('Capital inicial', 12000000); await fillLabel('Tasa mensual (%)', 1.5); await fillLabel('Total cuotas', 12); await fillLabel('Seguros mensuales (COP)', 45000)
-const fut = new Date(); fut.setDate(fut.getDate() + 20); await fillLabel('Primera cuota', fut.toISOString().slice(0, 10)); await submit('Guardar')
+const fut = new Date(); fut.setDate(fut.getDate() + 20); await fillLabel('Primera cuota', isoLocal(fut)); await submit('Guardar')
 ok('Crédito decreciente creado con seguro', /Crédito libre/.test(await T()) && /Cuota decreciente/.test(await T()) && /seguro \$ 45\.000\/mes/.test(await T()))
 st = await DB(() => { const d = window.__sb._T.deudas.find(x => x.nombre === 'Crédito libre'); return { sistema: d.sistema, seg: d.seguro_mensual } })
 ok('Crédito guardado con sistema capital y seguro', st.sistema === 'capital' && st.seg === 45000)
@@ -178,7 +182,7 @@ ok('Tabla recalculada: menos cuotas y abono visible', /abono \$ 5\.000\.000/.tes
 // ===== Lote 4 · depreciación =====
 await tab('Activos'); await page.locator('button[title="Nuevo activo"]').click(); await wait(150)
 await fillLabel('Nombre', 'Portátil'); await selectLabel('Tipo', 'Equipo'); await fillLabel('Valor estimado (COP)', 4000000)
-const hace = new Date(); hace.setMonth(hace.getMonth() - 12); await fillLabel('Fecha adquisición', hace.toISOString().slice(0, 10))
+const hace = new Date(); hace.setMonth(hace.getMonth() - 12); await fillLabel('Fecha adquisición', isoLocal(hace))
 await page.locator('label:has-text("Deprecia (lineal mensual)") input').check(); await selectLabel('Vida útil', '4 años'); await fillLabel('Valor residual (COP)', 400000); await submit('Guardar')
 st = await DB(() => { const a = window.__sb._T.activos.find(x => x.nombre === 'Portátil'); return { vida: a.vida_util_meses, res: a.valor_residual, base: a.valor_base, fb: a.fecha_base } })
 ok('Activo con depreciación guardada (48 meses, residual 400.000, base = valor)', st.vida === 48 && st.res === 400000 && st.base === 4000000 && !!st.fb)
@@ -266,7 +270,7 @@ ok('Cupo distinto: ofrece actualizarlo a 400.000', /Actualizar el cupo de la tar
 await submit('Aplicar (3 nuevas, 0 ajustes)'); await wait(600)
 st = await DB(() => { const T = window.__sb._T; const tc = T.cuentas.find(c => c.nombre === 'Nu Mastercard'); const cs = T.tc_cargos.filter(c => c.cuenta_id === tc.id); const ex = T.tc_extractos.find(x => x.cuenta_id === tc.id); return { n: cs.length, previas: cs.map(c => c.cuotas_previas).sort((a, b) => a - b), refs: cs.every(c => c.ref_extracto), cupo: tc.cupo, ex: ex && ex.pago_total, lim: ex && ex.fecha_limite } })
 ok('Aplicado: 3 compras con cuotas previas 0/5/22, huella guardada, cupo actualizado, estado del extracto guardado', st.n === 3 && JSON.stringify(st.previas) === '[0,5,22]' && st.refs && st.cupo === 400000 && st.ex === 249561.95 && st.lim === '2026-11-03')
-ok('La tarjeta muestra el extracto: pago total, mínimo y fecha límite', /Extracto del 12\/10\/2026 · Nu/.test(await T()) && /Pago total \$ 249\.562 · mínimo \$ 60\.749/.test(await T()) && /Paga antes del 03\/11\/2026/.test(await T()))
+ok('La tarjeta muestra el extracto: pago total, mínimo y fecha límite', /Extracto del 12\/10\/2026 · Nu/.test(await T()) && /Pago total \$ 249\.562 · mínimo \$ 60\.749/.test(await T()) && /(Paga antes del|Venció el) 03\/11\/2026/.test(await T()))
 ok('Saldo de la tarjeta refleja las cuotas previas (ChatGPT casi liquidado: 1 cuota pendiente)', (await DB(() => { const T = window.__sb._T; const c = T.tc_cargos.find(c => c.descripcion === 'Openai *Chatgpt Subscr'); return c.cuotas - c.cuotas_previas })) === 2)
 // segunda carga del mismo extracto → nada nuevo
 await page.locator('[data-item="Nu Mastercard"] button[title="Cargar extracto"]').click(); await wait(150); await page.setInputFiles('input[type=file]', { name: 'nu.pdf', mimeType: 'application/pdf', buffer: PDF_PRUEBA }); await wait(3500)
@@ -316,7 +320,7 @@ await loginAs('u-andres', 'andres@test.co')
 
 // ── Lote 7 · pagos reales, saldo según extracto, etiquetas ──────────────────
 await cambiarEspacio('Personal'); await tab('Deudas'); await click('button', { hasText: 'Nuevo' })
-await fillLabel('Nombre', 'Libre inversión'); await fillLabel('Capital inicial', 12000000); await fillLabel('Tasa mensual (%)', 1.5); await fillLabel('Total cuotas', 12); await fillLabel('Cuotas ya pagadas antes de la app', 2); const hace2 = new Date(); hace2.setMonth(hace2.getMonth() - 3); await fillLabel('Primera cuota', hace2.toISOString().slice(0, 10)); await fillLabel('Saldo real hoy según extracto (opcional)', 10480000); await submit('Guardar'); await wait(400)
+await fillLabel('Nombre', 'Libre inversión'); await fillLabel('Capital inicial', 12000000); await fillLabel('Tasa mensual (%)', 1.5); await fillLabel('Total cuotas', 12); await fillLabel('Cuotas ya pagadas antes de la app', 2); const hace2 = new Date(); hace2.setMonth(hace2.getMonth() - 3); await fillLabel('Primera cuota', isoLocal(hace2)); await fillLabel('Saldo real hoy según extracto (opcional)', 10480000); await submit('Guardar'); await wait(400)
 st = await DB(() => { const T = window.__sb._T; const d = T.deudas.find(x => x.nombre === 'Libre inversión'); const a = T.ajustes_saldo_deuda.find(x => x.deuda_id === d.id); return { a: !!a, n: a?.despues_de_cuota, s: a?.saldo_real } })
 ok('Crédito con saldo real al crear: ajuste registrado tras las 2 cuotas previas', st.a && st.n === 2 && st.s === 10480000 && /saldo según extracto/.test(await T()))
 ok('Saldo capital mostrado = saldo real (10.480.000)', /10\.480\.000/.test(await T()))
@@ -428,6 +432,32 @@ await page.locator('button[aria-label^="Eliminar Pago factura CMR Falabella"]').
 st = await DB(() => { const T = window.__sb._T; const tc = T.cuentas.find(c => c.nombre === 'CMR Falabella'); return { cuotas: T.cuotas_pagadas.filter(c => T.tc_cargos.find(x => x.id === c.cargo_id)?.cuenta_id === tc.id).length, mov: T.movimientos.filter(m => m.origen === 'tarjeta' && /CMR Falabella/.test(m.descripcion)).length } })
 ok('Al borrar el pago, las cuotas vuelven a pendientes y la próxima factura recupera su valor', st.cuotas === 0 && st.mov === 0)
 await tab('Deudas'); ok('Deudas: la factura CMR vuelve a mostrar las 3 cuotas por pagar', /CMR Falabella/.test(await T()) && /3 compras activas/.test(await T()))
+
+// ── Arranque progresivo con un usuario nuevo (lote 8): hábito = pagar lo programado ──
+await loginAs('u-nuevo', 'nuevo@test.co', { guiado: true }); await wait(300)
+await page.fill('input[placeholder="Ej. Andrés"]', 'Camila'); await page.locator('button', { hasText: 'Guardar' }).first().click(); await wait(300)
+await tab('Inicio')
+ok('Nuevo: 3 pestañas y el primer paso (pagos fijos; la cuenta "Efectivo" ya existe)', (await page.locator('nav button').count()) === 3 && (await page.locator('[data-paso="pagos_fijos"]').count()) === 1)
+await click('button', { hasText: 'Anotar mis pagos fijos' }); await wait(300)
+ok('Asistente de pagos fijos abierto', /Mis pagos fijos/.test(await T()) && /Arriendo o cuota de vivienda/.test(await T()))
+await page.locator('input[aria-label="Arriendo o cuota de vivienda"]').check(); await page.locator('input[aria-label="Valor Arriendo o cuota de vivienda"]').fill('1800000'); await page.locator('input[aria-label="Día Arriendo o cuota de vivienda"]').fill(String(new Date().getDate()))
+await page.locator('input[aria-label="Internet y televisión"]').check(); await page.locator('input[aria-label="Valor Internet y televisión"]').fill('95000')
+await page.locator('input[aria-label="Tarjeta de crédito"]').check(); await page.locator('input[aria-label="Valor Tarjeta de crédito"]').fill('450000')
+ok('Botón resume cantidad y total mensual', /Crear 3 pagos · \$ 2\.345\.000\/mes/.test(await T()))
+await submit(/Crear 3 pagos/); await wait(400)
+st = await DB(() => { const T = window.__sb._T; const ps = T.programado.filter(p => p.creado_por === 'u-nuevo'); return { n: ps.length, per: ps.map(p => p.periodicidad).join(','), cta: ps.every(p => !!p.cuenta_id), hoy: ps.some(p => { const d = new Date(); return p.vencimiento === `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }) } })
+ok('3 programados mensuales creados con la cuenta y el arriendo venciendo hoy', st.n === 3 && st.per === 'Mensual,Mensual,Mensual' && st.cta && st.hoy)
+await tab('Inicio'); ok('Paso 3: "Hoy vence" con botón Pagar en Inicio', (await page.locator('[data-paso="hoy"]').count()) === 1 && (await page.locator('button[aria-label="Pagar Arriendo o cuota de vivienda"]').count()) === 1)
+await page.locator('button[aria-label="Pagar Arriendo o cuota de vivienda"]').click(); await wait(200); await submit('Registrar pago'); await wait(400)
+ok('Pagado desde Inicio: aviso con "Deshacer" y se abre Movimientos (4 pestañas)', /Pagado: Arriendo/.test(await T()) && (await page.locator('nav button').count()) === 4 && /ya puedes ver Movimientos/.test(await T()))
+await click('button', { hasText: 'Deshacer' }); await wait(400)
+st = await DB(() => { const T = window.__sb._T; return { mov: T.movimientos.filter(m => m.creado_por === 'u-nuevo' && m.origen === 'programado').length, pend: T.programado.filter(p => p.creado_por === 'u-nuevo' && p.estado === 'Pendiente').length } })
+ok('Deshacer revierte el pago: sin movimiento, el programado vuelve a pendiente', st.mov === 0 && st.pend === 3 && (await page.locator('nav button').count()) === 3)
+await page.locator('button[aria-label="Pagar Arriendo o cuota de vivienda"]').click(); await wait(200); await submit('Registrar pago'); await wait(400)
+await tab('Config'); ok('Ajustes muestra el paso del arranque y el interruptor', /Arranque · paso 4 de 4|Arranque · paso 3 de 4/.test(await T()) && (await page.locator('[aria-label="Mostrar todas las secciones"]').count()) === 1)
+await page.locator('[aria-label="Mostrar todas las secciones"]').click(); await wait(300)
+ok('Interruptor: todas las secciones visibles', (await page.locator('nav button').count()) === 6)
+await page.screenshot({ path: 'test/shot-arranque.png', fullPage: true })
 
 // Amigo: aislamiento total
 await loginAs('u-amigo', 'amigo@test.co'); await page.fill('input[placeholder="Ej. Andrés"]', 'Amigo'); await click('button', { hasText: 'Guardar' }); await wait(200)

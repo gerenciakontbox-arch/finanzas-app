@@ -3,6 +3,8 @@ import { configurado } from './lib/supabase'
 import { AuthProvider, useAuth, SCHEMA_VERSION } from './lib/auth'
 import { DataProvider, useData } from './lib/data'
 import { Icon, T } from './lib/ui'
+import { today } from './lib/util'
+import { nivelArranque, tabsVisibles, presupuestoVisible } from './lib/arranque'
 import { Login, SinConfigurar, FaltaMigracion, PrimerNombre } from './modules/Acceso'
 import Dashboard from './modules/Dashboard'
 import Presupuesto from './modules/Presupuesto'
@@ -61,8 +63,12 @@ function Segmento({ value, onChange, opciones }) {
 }
 
 function Shell() {
-  const { session, listo, schemaOk, espacio, miembroActual, user, consent, esOperador } = useAuth()
+  const { session, listo, schemaOk, espacio, miembroActual, user, consent, esOperador, modoCompleto } = useAuth()
   const { db, error } = useData()
+  // Arranque progresivo: un usuario nuevo ve Inicio · Plan (solo Programado) · Ajustes hasta que pague algo; todo se abre al nivel 4 o con 'modo completo'.
+  const nivel = db ? nivelArranque(db, today()) : 4
+  const visibles = tabsVisibles(nivel, modoCompleto); const conPresupuesto = presupuestoVisible(nivel, modoCompleto)
+  const tabsNav = TABS.filter(t => visibles.includes(t[0]))
   const ir = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('ir') : null  // deep link desde un aviso: /?ir=programado
   const [tab, setTab] = useState(ir && PADRE[ir] ? PADRE[ir] : ir && (TABS.some(t => t[0] === ir) || ir === 'perfil' || ir === 'operador') ? ir : 'dashboard')
   const [sub, setSub] = useState({ plan: ir === 'programado' ? 'programado' : 'presupuesto' })
@@ -79,7 +85,7 @@ function Shell() {
   const autoNombre = miembroActual && user?.email && miembroActual.nombre === user.email.split('@')[0]
   const goTo = (k, a = null) => { const p = PADRE[k]; if (p) { setSub(s => ({ ...s, [p]: k })); setTab(p) } else setTab(k); setArg(a ? { ...a, _k: Date.now() } : null) }
   const props = { goTo }
-  const vista = tab === 'plan' ? sub.plan : tab
+  const vista = tab === 'plan' ? (conPresupuesto ? sub.plan : 'programado') : tab
   const inicio = tab === 'dashboard'
   const nombre = miembroActual?.nombre || '—'
   return (
@@ -89,7 +95,7 @@ function Shell() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
             <button onClick={() => goTo('perfil')} aria-label="Mi perfil" style={{ width: 40, height: 40, borderRadius: 20, border: 'none', background: 'rgba(255,255,255,0.18)', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>{iniciales(nombre)}</button>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inicio ? `Hola, ${nombre.split(' ')[0]}` : TITULO[tab]}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inicio ? `Hola, ${nombre.split(' ')[0]}` : tab === 'plan' && !conPresupuesto ? 'Pagos' : TITULO[tab]}</div>
               <div style={{ fontSize: 12, opacity: 0.8, marginTop: 1 }}>{espacio.tipo === 'personal' ? 'Espacio personal' : `${espacio.nombre} · ${TIPO_LABEL[espacio.tipo]}`}</div>
             </div>
           </div>
@@ -99,19 +105,19 @@ function Shell() {
       {autoNombre && <PrimerNombre />}
       {inicio ? <Dashboard {...props} /> : (
         <div style={{ padding: '16px 20px 8px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {tab === 'plan' && <Segmento value={sub.plan} onChange={k => setSub(s => ({ ...s, plan: k }))} opciones={[['presupuesto', 'Presupuesto'], ['programado', 'Programado']]} />}
+          {tab === 'plan' && conPresupuesto && <Segmento value={sub.plan} onChange={k => setSub(s => ({ ...s, plan: k }))} opciones={[['presupuesto', 'Presupuesto'], ['programado', 'Programado']]} />}
           {vista === 'presupuesto' && <Presupuesto {...props} />}
           {vista === 'movimientos' && <Movimientos {...props} inicial={arg} />}
           {vista === 'deudas' && <Deudas {...props} />}
           {vista === 'activos' && <Activos {...props} />}
-          {vista === 'programado' && <Programado {...props} />}
-          {vista === 'config' && <Config {...props} />}
+          {vista === 'programado' && <Programado {...props} inicial={arg} />}
+          {vista === 'config' && <Config {...props} inicial={arg} nivel={nivel} />}
           {vista === 'perfil' && <MiPerfil {...props} />}
           {vista === 'operador' && (esOperador ? <Operador {...props} /> : <Config {...props} />)}
         </div>
       )}
-      <nav aria-label="Secciones" className="safe-bot" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', paddingTop: 10, paddingLeft: 6, paddingRight: 6, zIndex: 100, boxShadow: '0 -8px 24px rgba(27,27,31,0.06)' }}>
-        {TABS.map(([k, icon, label]) => { const on = tab === k; return (
+      <nav aria-label="Secciones" className="safe-bot" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', display: 'grid', gridTemplateColumns: `repeat(${tabsNav.length}, minmax(0, 1fr))`, paddingTop: 10, paddingLeft: 6, paddingRight: 6, zIndex: 100, boxShadow: '0 -8px 24px rgba(27,27,31,0.06)' }}>
+        {tabsNav.map(([k, icon, label0]) => { const on = tab === k; const label = k === 'plan' && !conPresupuesto ? 'Pagos' : label0; return (
           <button key={k} onClick={() => { setTab(k); setArg(null) }} aria-current={on ? 'page' : undefined} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '2px 0 6px', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: on ? T.morado : T.gris, minWidth: 0 }}>
             <Icon name={icon} size={22} sw={on ? 2.2 : 2} />
             <span style={{ fontSize: 9.5, fontWeight: on ? 700 : 600, letterSpacing: '-0.1px', whiteSpace: 'nowrap' }}>{label}</span>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useData } from '../lib/data'
 import { useAuth } from '../lib/auth'
 import { Card, Icon, IcoText, Modal, Field, inp, sel, PBtn, SaveBtn, CancelBtn, SmallBtn, Aviso, useForm, T } from '../lib/ui'
@@ -9,10 +9,12 @@ import { Privacidad } from './Privacidad'
 import Etiquetas from './Etiquetas'
 import { soportado, configurado, permiso, esIOS, esStandalone, activar, desactivar, suscripcionActual, enviarPrueba } from '../lib/push'
 
-export default function Config({ goTo }) {
-  const [sec, setSec] = useState('espacios')
+export default function Config({ goTo, inicial, nivel = 4 }) {
+  const [sec, setSec] = useState(inicial?.seccion || 'espacios')
+  useEffect(() => { if (inicial?.seccion) setSec(inicial.seccion) }, [inicial?._k])
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <ModoApp nivel={nivel} />
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <PBtn active={sec === 'espacios'} onClick={() => setSec('espacios')}><IcoText name="home" size={13}>Espacios</IcoText></PBtn>
         <PBtn active={sec === 'cuentas'} onClick={() => setSec('cuentas')}><IcoText name="landmark" size={13}>Cuentas</IcoText></PBtn>
@@ -22,7 +24,7 @@ export default function Config({ goTo }) {
         <PBtn active={sec === 'datos'} onClick={() => setSec('datos')}><IcoText name="file" size={13}>Datos</IcoText></PBtn>
         <PBtn active={sec === 'privacidad'} onClick={() => setSec('privacidad')}><IcoText name="shield" size={13}>Privacidad</IcoText></PBtn>
       </div>
-      {sec === 'espacios' && <Espacios />}{sec === 'cuentas' && <Cuentas />}{sec === 'categorias' && <Categorias />}{sec === 'etiquetas' && <Etiquetas />}{sec === 'avisos' && <Avisos />}{sec === 'datos' && <Datos />}{sec === 'privacidad' && <Privacidad goTo={goTo} />}
+      {sec === 'espacios' && <Espacios />}{sec === 'cuentas' && <Cuentas inicial={inicial} />}{sec === 'categorias' && <Categorias />}{sec === 'etiquetas' && <Etiquetas />}{sec === 'avisos' && <Avisos />}{sec === 'datos' && <Datos />}{sec === 'privacidad' && <Privacidad goTo={goTo} />}
     </div>
   )
 }
@@ -102,11 +104,14 @@ function Espacios() {
 function TCF({ v, set }) { return (<><Field label="Cupo (COP)"><input type="number" inputMode="numeric" value={v.cupo ?? ''} onChange={e => set('cupo', e.target.value)} style={inp} /></Field><Field label="Tasa mensual (%) · solo para estimar intereses"><input type="number" inputMode="decimal" step="0.01" value={v.tasa_mensual ?? ''} onChange={e => set('tasa_mensual', e.target.value)} style={inp} /></Field><Field label="Banco"><input value={v.banco || ''} onChange={e => set('banco', e.target.value)} style={inp} /></Field><Field label="Últimos 4"><input value={v.ultimos4 || ''} onChange={e => set('ultimos4', e.target.value)} maxLength={4} style={inp} /></Field><Field label="Día de corte"><input type="number" min={1} max={31} value={v.dia_corte ?? ''} onChange={e => set('dia_corte', e.target.value)} style={inp} /></Field></>) }
 
 /* ── Cuentas: propias del espacio; las personales se habilitan en espacios compartidos ── */
-function Cuentas() {
+function Cuentas({ inicial }) {
   const { db, insertar, actualizar, borrar, rpc, nombreCuenta, saldoCuenta, duenoCuenta } = useData()
   const { espacio, esPersonal, compartidos, userId, nombreDe } = useAuth()
   const empty = { nombre: '', tipo: 'Bancaria', cupo: '', tasa_mensual: '', banco: '', ultimos4: '', dia_corte: '', saldo_inicial: '', fecha_corte: addDays(today(), -1) }   // saldo al CIERRE de esa fecha: por defecto ayer, para que lo de hoy ya cuente
   const [form, sf, setForm] = useForm(empty); const [edit, setEdit] = useState(null)
+  const nombreRef = useRef(null)
+  // Llegada desde 'Tu siguiente paso': foco en el nombre (y tipo tarjeta si aplica) o edición directa de una cuenta
+  useEffect(() => { if (!inicial) return; if (inicial.nuevaCuenta) { setForm({ ...empty, tipo: inicial.tipo || 'Bancaria' }); setTimeout(() => nombreRef.current?.focus(), 50) } if (inicial.editar) { const c = db.cuentas.find(x => x.id === inicial.editar); if (c) setEdit({ ...c, saldo_inicial: c.saldo_inicial ?? '', fecha_corte: c.fecha_corte || addDays(today(), -1) }) } }, [inicial?._k])
   const build = f => ({ nombre: f.nombre.trim(), tipo: f.tipo, saldo_inicial: f.tipo === TC ? 0 : (parseFloat(String(f.saldo_inicial).replace(/[^\d.-]/g, '')) || 0), fecha_corte: f.tipo === TC ? null : (f.fecha_corte || null), cupo: f.tipo === TC ? parseFloat(f.cupo) || null : null, tasa_mensual: f.tipo === TC ? parseFloat(f.tasa_mensual) || 0 : null, banco: f.tipo === TC ? f.banco || null : null, ultimos4: f.tipo === TC && /^\d{4}$/.test(f.ultimos4) ? f.ultimos4 : null, dia_corte: f.tipo === TC ? parseInt(f.dia_corte) || null : null })
   const add = async () => { if (!form.nombre.trim()) return; try { await insertar('cuentas', build(form)); setForm(empty) } catch (e) { alert(e.message) } }
   const save = async () => { try { await actualizar('cuentas', edit.id, build(edit)); setEdit(null) } catch (e) { alert(e.message) } }
@@ -119,7 +124,7 @@ function Cuentas() {
         <div style={{ fontWeight: 700, fontSize: 13, color: '#1B1B1F', marginBottom: 4 }}>{esPersonal ? 'Mis cuentas y tarjetas' : `Cuentas propias de ${espacio.nombre}`}</div>
         <div style={{ fontSize: 11, color: '#6E6E73', marginBottom: 10 }}>{esPersonal ? 'Son tuyas. Abajo puedes habilitarlas como medio de pago en tus espacios compartidos: los demás verán su nombre, nunca su saldo.' : espacio.tipo === 'hogar' ? 'Normalmente un hogar no tiene cuentas propias: los gastos se pagan con las cuentas personales habilitadas por cada miembro.' : 'Cuentas de la empresa. Lo que pagues desde ellas a un miembro cae en su espacio personal.'}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-          <Field label="Nombre" full><input value={form.nombre} onChange={e => sf('nombre', e.target.value)} placeholder="Ej. Bancolombia, Visa Bancolombia" style={inp} /></Field>
+          <Field label="Nombre" full><input ref={nombreRef} value={form.nombre} onChange={e => sf('nombre', e.target.value)} placeholder="Ej. Bancolombia, Visa Bancolombia" style={inp} /></Field>
           <Field label="Tipo"><select value={form.tipo} onChange={e => sf('tipo', e.target.value)} style={sel}>{TIPOS_CTA.map(x => <option key={x}>{x}</option>)}</select></Field>
           {form.tipo === TC && <TCF v={form} set={sf} />}
           {form.tipo !== TC && <><Field label="Saldo al empezar (COP)"><input type="number" inputMode="numeric" value={form.saldo_inicial} onChange={e => sf('saldo_inicial', e.target.value)} placeholder="0" style={inp} /></Field><Field label="Fecha de corte"><input type="date" value={form.fecha_corte || ''} onChange={e => sf('fecha_corte', e.target.value)} style={inp} /></Field><div style={{ gridColumn: '1/-1', fontSize: 11, color: T.gris, marginTop: -4 }}>El saldo es el del <b>cierre</b> de esa fecha: lo que registres con fecha posterior suma o resta; lo anterior queda como historia.</div></>}
@@ -231,6 +236,27 @@ function Avisos() {
       </div>
       {msg && <div style={{ marginTop: 10 }}><Aviso tipo={msg[0]}>{msg[1]}</Aviso></div>}
       <div style={{ fontSize: 11, color: T.grisClaro, marginTop: 12 }}>Se activa por dispositivo: hazlo en cada teléfono donde quieras recibirlos.</div>
+    </Card>
+  )
+}
+
+// Arranque progresivo: en qué paso va el usuario y el interruptor para ver todas las secciones desde ya.
+function ModoApp({ nivel }) {
+  const { modoCompleto, setModoCompleto } = useAuth()
+  const [busy, setBusy] = useState(false)
+  if (modoCompleto && nivel >= 4) return null   // nada que explicar: ya lo ve todo por mérito propio
+  const pasos = ['Crea una cuenta de pago', 'Anota tus pagos fijos', 'Paga el primero', 'Una semana pagando']
+  const cambiar = async v => { setBusy(true); try { await setModoCompleto(v) } catch (e) { alert(e.message) } finally { setBusy(false) } }
+  return (
+    <Card>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 800, fontSize: 13, color: T.tinta }}>{modoCompleto ? 'Ves todas las secciones' : nivel >= 4 ? 'Todas las secciones abiertas' : `Arranque · paso ${Math.min(nivel + 1, 4)} de 4`}</div>
+          <div style={{ fontSize: 11, color: T.gris, marginTop: 2 }}>{modoCompleto ? 'Apágalo para volver al modo guiado (solo Inicio, Pagos y Ajustes hasta que pagues).' : nivel >= 4 ? 'Ya pasaste el arranque.' : `Ahora: ${pasos[Math.min(nivel, 3)]}. Las demás secciones se abren solas a medida que uses la app; si ya la conoces, actívalas aquí.`}</div>
+        </div>
+        {nivel < 4 && !modoCompleto && <button role="switch" aria-checked={false} aria-label="Mostrar todas las secciones" disabled={busy} onClick={() => cambiar(true)} style={{ width: 48, height: 28, borderRadius: 14, border: 'none', background: '#D9D6E3', position: 'relative', cursor: 'pointer', flexShrink: 0 }}><span style={{ position: 'absolute', top: 3, left: 3, width: 22, height: 22, borderRadius: 11, background: '#fff' }} /></button>}
+        {nivel < 4 && modoCompleto && <button disabled={busy} onClick={() => cambiar(false)} style={{ background: 'none', border: `1.5px solid ${T.divisor}`, borderRadius: 99, padding: '7px 12px', fontSize: 12, fontWeight: 700, color: T.morado, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>Volver al guiado</button>}
+      </div>
     </Card>
   )
 }

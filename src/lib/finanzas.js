@@ -1,5 +1,5 @@
 // Cálculos derivados sobre las tablas del hogar. Puros: reciben db, devuelven datos.
-import { amortizacion, cfFija, addMonths, TC } from './util.js'
+import { amortizacion, cfFija, addMonths, TC, today } from './util.js'
 
 // Mapa de cuotas pagadas: { deuda: {deudaId: {n: fila}}, cargo: {cargoId: {n: fila}} }
 export function indicePagadas(cuotas_pagadas) {
@@ -31,7 +31,7 @@ export function depreciacion(a, hoy) {
   if (!a.vida_util_meses) return null
   const base = +(a.valor_base ?? a.valor_estimado) || 0, residual = Math.min(+a.valor_residual || 0, base), vida = +a.vida_util_meses
   const desde = a.fecha_base || a.fecha_adquisicion; if (!desde) return { base, residual, vida, meses: 0, acumulada: 0, neto: base }
-  const d0 = new Date(desde + 'T12:00:00'), d1 = new Date((hoy || new Date().toISOString().slice(0, 10)) + 'T12:00:00')
+  const d0 = new Date(desde + 'T12:00:00'), d1 = new Date((hoy || today()) + 'T12:00:00')
   const meses = Math.max(0, Math.min(vida, (d1.getFullYear() - d0.getFullYear()) * 12 + (d1.getMonth() - d0.getMonth()) + (d1.getDate() >= d0.getDate() ? 0 : -1)))
   const mensual = (base - residual) / vida
   const acumulada = Math.round(mensual * meses)

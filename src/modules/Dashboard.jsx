@@ -1,4 +1,7 @@
+import { useState, useEffect } from 'react'
 import { useData, useIndices } from '../lib/data'
+import { siguientePaso, nivelArranque } from '../lib/arranque'
+import { CompletarModal } from './Programado'
 import { Icon, T, BarChartCJ, PieChartCJ } from '../lib/ui'
 import { fmtCOP, fmtDate, today, addDays, daysLeft, GRUPOS, TC, primeroDelMes } from '../lib/util'
 import { deudaTotal, presupuestoConEjecucion, resumenTarjeta, indicePagadas, aportesPorEspacio, aportesPorMiembro, aportesPlanificados, costoFinanciero, gastosPorCategoria, porEtiqueta } from '../lib/finanzas'
@@ -30,7 +33,15 @@ const FilaEspacio = ({ onClick, icono, oscuro, titulo, sub }) => (
 )
 
 export default function Dashboard({ goTo }) {
-  const { db, all, duenoCuenta, nombreMiembro, saldoCuenta } = useData(); const ix = useIndices(); const { espacio, esPersonal, personal, userId, compartidos, miembros, cambiarEspacio } = useAuth()
+  const { db, all, duenoCuenta, nombreMiembro, saldoCuenta, rpc } = useData(); const ix = useIndices(); const { espacio, esPersonal, personal, userId, compartidos, miembros, cambiarEspacio, modoCompleto } = useAuth()
+  // Arranque: una sola tarea visible, pagar desde aquí con un toque y poder deshacer unos segundos.
+  const paso = siguientePaso(db, today()); const nivel = nivelArranque(db, today())
+  const [pagando, setPagando] = useState(null); const [deshacer, setDeshacer] = useState(null)
+  useEffect(() => { if (!deshacer) return; const t = setTimeout(() => setDeshacer(null), 7000); return () => clearTimeout(t) }, [deshacer])
+  const deshacerPago = async () => { const p = deshacer; setDeshacer(null); try { await rpc('deshacer_programado', { p_id: p.id }) } catch (e) { alert(e.message) } }
+  const [nivelVisto, setNivelVisto] = useState(() => { try { return +localStorage.getItem('akonta_nivel_' + userId) || 0 } catch { return 0 } })
+  const desbloqueo = !modoCompleto && nivel > nivelVisto && nivel >= 3 ? nivel : 0
+  const cerrarDesbloqueo = () => { setNivelVisto(nivel); try { localStorage.setItem('akonta_nivel_' + userId, String(nivel)) } catch { } }
   const periodo = primeroDelMes()
   const pce = presupuestoConEjecucion(db, periodo)
   const totalP = pce.reduce((a, p) => a + p.monto, 0), totalE = pce.reduce((a, p) => a + p.ejecutado, 0)
@@ -70,9 +81,29 @@ export default function Dashboard({ goTo }) {
         {deuda.total > 0 && <div style={{ fontSize: 12, opacity: 0.8, marginTop: 6 }}>Deuda pendiente {fmtCOP(deuda.total)}</div>}
         <div style={{ marginTop: 20, display: 'flex', gap: 10 }}>
           {pill(true, () => goTo('movimientos', { nuevo: true }), <><Icon name="plus" size={16} sw={3} />Anotar gasto</>)}
-          {esPersonal ? pill(false, () => goTo('movimientos', { filtro: 'Aportes' }), 'Mis aportes') : pill(false, () => goTo('presupuesto'), 'Presupuesto')}
+          {nivel < 4 && !modoCompleto ? pill(false, () => goTo('programado'), 'Mis pagos') : esPersonal ? pill(false, () => goTo('movimientos', { filtro: 'Aportes' }), 'Mis aportes') : pill(false, () => goTo('presupuesto'), 'Presupuesto')}
         </div>
       </div>
+
+      {desbloqueo > 0 && <div style={{ margin: '16px 20px 0', background: T.verde, color: '#fff', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }} role="status">
+        <Icon name="check" size={18} sw={2.5} /><div style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>{desbloqueo === 3 ? 'Primer pago registrado: ya puedes ver Movimientos, tu historial.' : 'Una semana pagando: ya tienes Presupuesto, Deudas y Activos.'}</div><button onClick={cerrarDesbloqueo} aria-label="Entendido" style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 99, padding: '6px 12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>Ok</button>
+      </div>}
+      {paso && <div data-paso={paso.clave} style={{ margin: '16px 20px 0', background: T.superficie, borderRadius: 16, padding: '14px 16px' }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.morado, letterSpacing: 0.3 }}>{paso.clave === 'al_dia' ? 'todo al día' : 'tu siguiente paso'}</div>
+        <div style={{ fontSize: 16, fontWeight: 800, color: T.tinta, marginTop: 4 }}>{paso.titulo}</div>
+        <div style={{ fontSize: 12, color: T.gris, marginTop: 4, lineHeight: 1.45 }}>{paso.detalle}</div>
+        {paso.pagar && <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column' }}>
+          {paso.pagar.slice(0, 5).map(p => <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: `1px solid ${T.divisor}` }}>
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: T.tinta, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre}</div><div style={{ fontSize: 11, color: daysLeft(p.vencimiento) < 0 ? T.rojo : T.gris }}>{fmtCOP(p.monto)} · {daysLeft(p.vencimiento) < 0 ? `venció ${fmtDate(p.vencimiento)}` : 'vence hoy'}</div></div>
+            <button onClick={() => setPagando(p)} aria-label={`Pagar ${p.nombre}`} style={{ background: T.morado, color: '#fff', border: 'none', borderRadius: 99, padding: '8px 16px', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Pagar</button>
+          </div>)}
+        </div>}
+        {paso.cta && !paso.pagar && <button onClick={() => goTo(paso.ir, paso.arg)} style={{ marginTop: 12, background: T.morado, color: '#fff', border: 'none', borderRadius: 99, padding: '10px 18px', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{paso.cta}</button>}
+      </div>}
+      {deshacer && <div role="status" style={{ position: 'fixed', left: 16, right: 16, bottom: 'calc(96px + env(safe-area-inset-bottom))', background: T.tinta, color: '#fff', borderRadius: 14, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, zIndex: 50 }}>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>Pagado: {deshacer.nombre}</div><button onClick={deshacerPago} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>Deshacer</button>
+      </div>}
+      {pagando && <CompletarModal p={pagando} onClose={() => setPagando(null)} onDone={p => setDeshacer(p)} />}
 
       <div style={{ padding: '22px 20px 0', display: 'flex', gap: 24 }}>
         <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12, fontWeight: 600, color: T.gris }}>Entró en {mesNombre}</div><div style={{ fontSize: 20, fontWeight: 800, color: T.verde, marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>+ {fmtCOP(ing + totRecibidos).replace('$', '').trim()}</div>{!esPersonal && ingresosPend > 0 && <div style={{ fontSize: 11, color: T.gris, marginTop: 2 }}>por cobrar {fmtCOP(ingresosPend)}</div>}</div>

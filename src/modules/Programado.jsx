@@ -2,14 +2,17 @@ import { useState, useEffect, useRef } from 'react'
 import { useData, useIndices } from '../lib/data'
 import { useAuth } from '../lib/auth'
 import { EtiquetaPicker, ChipsDe } from './Etiquetas'
-import { Kpi, Card, Icon, IcoText, Modal, Field, inp, sel, PBtn, SaveBtn, CancelBtn, SmallBtn, PrimaryBtn, Aviso, BarChartCJ, useForm } from '../lib/ui'
+import { Kpi, Card, Icon, IcoText, Modal, Field, inp, sel, PBtn, SaveBtn, CancelBtn, SmallBtn, PrimaryBtn, Aviso, BarChartCJ, useForm, T } from '../lib/ui'
 import { fmtCOP, fmtDate, today, addDays, addMonths, daysLeft, TC, TIPOS_PROG, PERIODICIDADES } from '../lib/util'
 import { parseCSV, parseMonto, parseFecha, matchOpt, toCSV, descargar, leerArchivoTexto, norm } from '../lib/csv'
+import { PAGOS_FIJOS, proximoDia } from '../lib/arranque'
 
 const PICO = { Impuesto: 'receipt', Seguro: 'shield', Mantenimiento: 'wrench', 'Cuota crédito': 'card', Servicio: 'wifi', Suscripción: 'refresh', Nómina: 'user', Honorarios: 'dollar', Arriendo: 'home', Otro: 'pin' }
 
-export default function Programado() {
+export default function Programado({ inicial }) {
   const { db, insertar, actualizar, borrar, rpc, nombreCuenta, nombreMiembro, duenoCuenta } = useData(); const ix = useIndices(); const { esPersonal, espacio } = useAuth()
+  const [pagosFijos, setPagosFijos] = useState(false)
+  useEffect(() => { if (inicial?.pagosFijos) setPagosFijos(true) }, [inicial?._k])
   const [flujo, setFlujo] = useState('salida'); const [vista, setVista] = useState('pendientes'); const [modal, setModal] = useState(null); const [ficha, setFicha] = useState(null); const [completar, setCompletar] = useState(null); const [importar, setImportar] = useState(false)
   const cuentasCaja = db.cuentas.filter(c => c.tipo !== TC)
   const empty = f => ({ flujo: f, tipo: f === 'ingreso' ? 'Honorarios' : 'Servicio', nombre: '', categoria_id: db.categorias.find(c => f === 'ingreso' ? c.nombre === 'Honorarios' : c.nombre === 'Servicios públicos')?.id || db.categorias.find(c => c.activa !== false)?.id || null, activo_id: null, cuenta_id: cuentasCaja[0]?.id || null, cuenta_destino_id: '', modo_destino: espacio.tipo === 'empresa' ? 'ingreso' : 'devolucion', aMiembro: false, deuda_id: null, monto: '', periodicidad: 'Mensual', vencimiento: addDays(today(), 7), ficha_url: '', ficha_usuario: '', ficha_referencia: '', ficha_instrucciones: '', ficha_valores: {}, notas: '', etiqueta_ids: [] })
@@ -46,7 +49,8 @@ export default function Programado() {
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {items.length === 0 && <Card style={{ textAlign: 'center', color: '#9A9AA0', fontSize: 13, padding: 30 }}>{vista === 'historial' ? 'Sin historial todavía.' : flujo === 'ingreso' ? 'Programa tus ingresos fijos: honorarios, salario, arriendos que recibes…' : 'Programa tus obligaciones recurrentes.'}</Card>}
+        {items.length === 0 && vista === 'pendientes' && flujo === 'salida' && db.programado.length === 0 && <Card style={{ textAlign: 'center', padding: 24 }}><div style={{ fontWeight: 800, fontSize: 15, color: T.tinta }}>¿Qué pagas todos los meses?</div><div style={{ fontSize: 12, color: T.gris, marginTop: 6, marginBottom: 14 }}>Arriendo, servicios, colegio, tarjeta, crédito… Márcalos una vez y la app te avisa qué toca pagar cada día.</div><SaveBtn onClick={() => setPagosFijos(true)}>Anotar mis pagos fijos</SaveBtn></Card>}
+        {items.length === 0 && !(vista === 'pendientes' && flujo === 'salida' && db.programado.length === 0) && <Card style={{ textAlign: 'center', color: '#9A9AA0', fontSize: 13, padding: 30 }}>{vista === 'historial' ? 'Sin historial todavía.' : flujo === 'ingreso' ? 'Programa tus ingresos fijos: honorarios, salario, arriendos que recibes…' : 'Programa tus obligaciones recurrentes.'}</Card>}
         {items.map(p => { const d = daysLeft(p.vencimiento); const ing = p.flujo === 'ingreso'; const pendiente = p.estado === 'Pendiente'; const tieneFicha = p.ficha_url || p.ficha_usuario || p.ficha_referencia || p.ficha_instrucciones || Object.keys(p.ficha_valores || {}).length || db.programado_adjuntos.some(a => a.programado_id === p.id); return (
           <div key={p.id} data-item={p.nombre} style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', border: '1px solid #EBE9F1', opacity: pendiente ? 1 : 0.75 }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -75,6 +79,7 @@ export default function Programado() {
       {modal && <FormProgramado form={form} sf={sf} setForm={setForm} modal={modal} onClose={() => setModal(null)} onSave={save} />}
       {ficha && <FichaPago p={ficha} onClose={() => setFicha(null)} onCompletar={() => { setFicha(null); setCompletar(ficha) }} />}
       {completar && <CompletarModal p={completar} onClose={() => setCompletar(null)} />}
+      {pagosFijos && <PagosFijos onClose={() => setPagosFijos(false)} />}
       {importar && <ImportarProgramado flujo={flujo} onClose={() => setImportar(false)} />}
     </div>
   )
@@ -251,11 +256,11 @@ function FichaPago({ p, onClose, onCompletar }) {
   )
 }
 
-function CompletarModal({ p, onClose }) {
+export function CompletarModal({ p, onClose, onDone }) {
   const { db, rpc, nombreCuenta } = useData(); const ing = p.flujo === 'ingreso'; const cuentasCaja = db.cuentas.filter(c => c.tipo !== TC)
   const [fecha, setFecha] = useState(today()); const [monto, setMonto] = useState(String(p.monto)); const [cuenta, setCuenta] = useState(p.cuenta_id || cuentasCaja[0]?.id); const [busy, setBusy] = useState(false)
   const m = parseMonto(monto) || 0; const dif = m - +p.monto
-  const go = async () => { setBusy(true); try { await rpc('completar_programado', { p_id: p.id, p_fecha: fecha, p_monto: m, p_cuenta_id: cuenta, p_desglose: dif ? { esperado: +p.monto, diferencia: dif } : {}, p_motivo: null }); onClose() } catch (e) { alert(e.message) } finally { setBusy(false) } }
+  const go = async () => { setBusy(true); try { await rpc('completar_programado', { p_id: p.id, p_fecha: fecha, p_monto: m, p_cuenta_id: cuenta, p_desglose: dif ? { esperado: +p.monto, diferencia: dif } : {}, p_motivo: null }); onClose(); onDone && onDone(p) } catch (e) { alert(e.message) } finally { setBusy(false) } }
   return (
     <Modal title={(ing ? 'Cobrar · ' : 'Pagar · ') + p.nombre} onClose={onClose}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -266,6 +271,47 @@ function CompletarModal({ p, onClose }) {
       {dif !== 0 && <div style={{ marginTop: 10 }}><Aviso tipo="warn">Diferencia de {dif > 0 ? '+' : ''}{fmtCOP(dif)} respecto a lo programado ({fmtCOP(p.monto)}). Se registra el valor real.</Aviso></div>}
       <div style={{ marginTop: 10 }}><Aviso tipo="info">Se crea el movimiento en caja{p.periodicidad !== 'Puntual' ? ` y la siguiente ocurrencia queda programada para el ${fmtDate(siguiente(p.vencimiento, p.periodicidad))}` : ''}.</Aviso></div>
       <div style={{ display: 'flex', gap: 10, marginTop: 18 }}><CancelBtn onClick={onClose} /><SaveBtn onClick={go} disabled={busy || m <= 0}>{busy ? 'Guardando…' : ing ? 'Registrar cobro' : 'Registrar pago'}</SaveBtn></div>
+    </Modal>
+  )
+}
+
+// Asistente de arranque: los pagos fijos del hogar en una sola pantalla. Marca, pon valor y día; crea los programados
+// mensuales con el próximo vencimiento. Sin esto, el primer uso exigía crear cada programado campo por campo.
+export function PagosFijos({ onClose }) {
+  const { db, insertarVarios } = useData()
+  const cuentasCaja = db.cuentas.filter(c => c.tipo !== TC)
+  const [marcados, setMarcados] = useState({}); const [otro, setOtro] = useState({ nombre: '', monto: '', dia: '' }); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState('')
+  const toggle = k => setMarcados(s => { const n = { ...s }; if (n[k]) delete n[k]; else { const d = PAGOS_FIJOS.find(x => x[0] === k); n[k] = { monto: '', dia: String(d[4]) } } return n })
+  const set = (k, campo, v) => setMarcados(s => ({ ...s, [k]: { ...s[k], [campo]: v } }))
+  const filas = PAGOS_FIJOS.filter(([k]) => marcados[k]).map(([k, nombre, tipo, cat, dia]) => ({ k, nombre, tipo, cat, monto: parseMonto(marcados[k].monto) || 0, dia: Math.min(31, Math.max(1, parseInt(marcados[k].dia) || dia)) }))
+  if (otro.nombre.trim() && parseMonto(otro.monto) > 0) filas.push({ k: 'otro', nombre: otro.nombre.trim(), tipo: 'Otro', cat: 'Otro', monto: parseMonto(otro.monto), dia: Math.min(31, Math.max(1, parseInt(otro.dia) || 1)) })
+  const listas = filas.filter(f => f.monto > 0); const total = listas.reduce((a, f) => a + f.monto, 0)
+  const crear = async () => {
+    if (!listas.length) return; setBusy(true)
+    try {
+      const catDe = n => db.categorias.find(c => norm(c.nombre) === norm(n))?.id || db.categorias.find(c => c.nombre === 'Otro')?.id || db.categorias.find(c => c.activa !== false)?.id || null
+      await insertarVarios('programado', listas.map(f => ({ flujo: 'salida', tipo: f.tipo, nombre: f.nombre, monto: f.monto, periodicidad: f.k === 'mercado' ? 'Quincenal' : 'Mensual', vencimiento: proximoDia(f.dia, today()), cuenta_id: cuentasCaja[0]?.id || null, categoria_id: catDe(f.cat), estado: 'Pendiente', ficha_valores: {}, notas: 'Creado desde "Mis pagos fijos"', etiqueta_ids: [] })))
+      onClose()
+    } catch (e) { setMsg(e.message) } finally { setBusy(false) }
+  }
+  const celda = { ...inp, padding: '7px 10px', fontSize: 13 }
+  return (
+    <Modal title="Mis pagos fijos" onClose={onClose}>
+      <div style={{ fontSize: 12, color: T.gris, marginBottom: 12 }}>Marca lo que pagas cada mes, pon el valor aproximado y el día. Después lo ajustas; lo importante es empezar.</div>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {PAGOS_FIJOS.map(([k, nombre, , , dia]) => (
+          <div key={k} style={{ borderBottom: `1px solid ${T.divisor}`, padding: '8px 0' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, fontWeight: marcados[k] ? 700 : 500, color: T.tinta }}><input type="checkbox" checked={!!marcados[k]} onChange={() => toggle(k)} style={{ width: 18, height: 18, accentColor: T.morado }} aria-label={nombre} />{nombre}</label>
+            {marcados[k] && <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: 8, marginTop: 8, marginLeft: 28 }}><input type="number" inputMode="numeric" placeholder="Valor (COP)" value={marcados[k].monto} onChange={e => set(k, 'monto', e.target.value)} style={celda} aria-label={`Valor ${nombre}`} autoFocus /><input type="number" inputMode="numeric" min="1" max="31" value={marcados[k].dia} onChange={e => set(k, 'dia', e.target.value)} style={celda} aria-label={`Día ${nombre}`} title="Día del mes" /></div>}
+          </div>))}
+        <div style={{ padding: '10px 0' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: T.gris, marginBottom: 6 }}>Otro pago fijo</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 70px', gap: 8 }}><input placeholder="Nombre" value={otro.nombre} onChange={e => setOtro({ ...otro, nombre: e.target.value })} style={celda} /><input type="number" inputMode="numeric" placeholder="Valor" value={otro.monto} onChange={e => setOtro({ ...otro, monto: e.target.value })} style={celda} /><input type="number" inputMode="numeric" placeholder="Día" value={otro.dia} onChange={e => setOtro({ ...otro, dia: e.target.value })} style={celda} /></div>
+        </div>
+      </div>
+      {!cuentasCaja.length && <Aviso tipo="warn">Aún no tienes una cuenta de pago: los pagos se crean sin cuenta y la eliges al pagar.</Aviso>}
+      {msg && <Aviso tipo="err">{msg}</Aviso>}
+      <div style={{ display: 'flex', gap: 10, marginTop: 16, alignItems: 'center' }}><CancelBtn onClick={onClose} /><SaveBtn onClick={crear} disabled={busy || !listas.length}>{busy ? 'Creando…' : listas.length ? `Crear ${listas.length} pago${listas.length === 1 ? '' : 's'} · ${fmtCOP(total)}/mes` : 'Marca al menos uno'}</SaveBtn></div>
     </Modal>
   )
 }

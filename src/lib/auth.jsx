@@ -54,6 +54,9 @@ export function AuthProvider({ children }) {
     miembros: espacio ? miembrosDe(espacio.id) : [], miembrosDe, miembrosTodos: miembros, miembroActual, nombreDe,
     esAdmin: miembroActual?.rol === 'admin' || espacio?.tipo === 'personal',
     recargar: () => cargarContexto(session),
+    // Arranque progresivo (lote 8): el único interruptor guardado. Vive en los metadatos del usuario, viaja con él entre dispositivos.
+    modoCompleto: !!session?.user?.user_metadata?.modo_completo,
+    setModoCompleto: async v => { const { data, error } = await supabase.auth.updateUser({ data: { modo_completo: !!v } }); if (error) throw error; if (data?.user) setSession(s => s ? { ...s, user: data.user } : s) },
     consent, esOperador,
     registrarConsentimientos: async (obj, version) => { const { error } = await supabase.rpc('registrar_consentimientos', { p: obj, p_version: version, p_user_agent: navigator.userAgent }); if (error) throw error; const { data: cs } = await supabase.from('consentimientos').select('finalidad,aceptado,version,creado_en,id').order('creado_en', { ascending: false }).order('id', { ascending: false }); setConsent(resumirConsent(cs || [])) },
     eliminarMiCuenta: async () => { const { error } = await supabase.rpc('eliminar_mi_cuenta'); if (error) throw error; await supabase.auth.signOut() },

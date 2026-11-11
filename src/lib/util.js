@@ -1,6 +1,7 @@
 export const fmtCOP = v => '$ ' + Math.round(Number(v) || 0).toLocaleString('es-CO')
 export const fmtDate = d => { if (!d) return '—'; const [y, m, day] = String(d).slice(0, 10).split('-'); return `${day}/${m}/${y}` }
-export const today = () => new Date().toISOString().slice(0, 10)
+// Fecha LOCAL del dispositivo (toISOString daba la fecha UTC: en Colombia, de 7 pm a medianoche 'hoy' era mañana).
+export const today = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 export const addDays = (d, n) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + n); return dt.toISOString().slice(0, 10) }
 export const addMonths = (d, n) => { const dt = new Date(d + 'T12:00:00'); dt.setMonth(dt.getMonth() + n); return dt.toISOString().slice(0, 10) }
 export const daysLeft = d => Math.round((new Date(d + 'T12:00:00') - new Date(today() + 'T12:00:00')) / 864e5)
